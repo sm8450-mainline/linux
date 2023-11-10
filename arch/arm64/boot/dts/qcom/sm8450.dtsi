@@ -3072,6 +3072,10 @@
 				 <&gcc GCC_DISP_HF_AXI_CLK>,
 				 <&gcc GCC_DISP_SF_AXI_CLK>,
 				 <&dispcc DISP_CC_MDSS_MDP_CLK>;
+			clock-names = "iface_clk",
+			          "gcc_bus",
+			          "gcc_nrt_bus",
+			          "branch_clk";
 
 			interrupts = <GIC_SPI 83 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-controller;
