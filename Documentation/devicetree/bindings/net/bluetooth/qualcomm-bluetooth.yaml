@@ -18,6 +18,7 @@ properties:
     enum:
       - qcom,qca2066-bt
       - qcom,qca6174-bt
+      - qcom,qca6490-bt
       - qcom,qca9377-bt
       - qcom,wcn3988-bt
       - qcom,wcn3990-bt
@@ -36,6 +37,15 @@ properties:
     maxItems: 1
     description: gpio specifier is used to find status
                  of clock supply to SoC
+
+  wlan-gpios:
+    maxItems: 1
+    description: gpio specifier used to enable the WLAN
+                 chip, on QCA6490 only
+
+  power-domains:
+    maxItems: 1
+    description: power domain associated with the chip
 
   clocks:
     maxItems: 1
@@ -113,6 +123,17 @@ allOf:
       required:
         - enable-gpios
         - clocks
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - qcom,qca6490-bt
+    then:
+      required:
+        - enable-gpios
+        - wlan-gpios
 
   - if:
       properties:
