@@ -194,6 +194,8 @@
 #define GCC_VIDEO_AXI0_CLK					182
 #define GCC_VIDEO_AXI1_CLK					183
 #define GCC_VIDEO_XO_CLK					184
+#define GCC_GPLL2						185
+#define GCC_GPLL3						186
 
 /* GCC resets */
 #define GCC_CAMERA_BCR						0
