@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Copyright (c) 2024, Danila Tikhonov <danila@jiaxyga.com>
+ */
+
+#include "sm8450.dtsi"
+
+/delete-node/ &usb_1_hsphy;
+/delete-node/ &ufs_mem_phy;
+
+&soc {
+	usb_1_hsphy: phy@88e3000 {
+		compatible = "qcom,sm8475-snps-eusb2-phy",
+			     "qcom,sm8550-snps-eusb2-phy";
+		reg = <0 0x088e3000 0 0x154>;
+		#phy-cells = <0>;
+
+		clocks = <&rpmhcc RPMH_CXO_CLK>;
+		clock-names = "ref";
+
+		resets = <&gcc GCC_QUSB2PHY_PRIM_BCR>;
+
+		status = "disabled";
+	};
+
+	ufs_mem_phy: phy@1d80000 {
+		compatible = "qcom,sm8475-qmp-ufs-phy";
+		reg = <0 0x1d80000 0 0x2000>;
+
+		clocks = <&rpmhcc RPMH_CXO_CLK>,
+			 <&gcc GCC_UFS_PHY_PHY_AUX_CLK>,
+			 <&gcc GCC_UFS_0_CLKREF_EN>;
+		clock-names = "ref",
+			      "ref_aux",
+			      "qref";
+
+		resets = <&ufs_mem_hc 0>;
+		reset-names = "ufsphy";
+
+		#clock-cells = <1>;
+		#phy-cells = <0>;
+
+		status = "disabled";
+	};
+};
+
+&camcc {
+	compatible = "qcom,sm8475-camcc";
+};
+
+&dispcc {
+	compatible = "qcom,sm8475-dispcc";
+};
+
+&gcc {
+	compatible = "qcom,sm8475-gcc";
+};
+
+&gpucc {
+	compatible = "qcom,sm8475-gpucc";
+};
+
+&tlmm {
+	compatible = "qcom,sm8475-tlmm";
+};
+
+&ufs_mem_hc {
+	freq-table-hz =
+		<75000000 850000000>,
+		<0 0>,
+		<0 0>,
+		<75000000 850000000>,
+		<75000000 850000000>,
+		<0 0>,
+		<0 0>,
+		<0 0>;
+};
+
+&videocc {
+	compatible = "qcom,sm8475-videocc";
+};
