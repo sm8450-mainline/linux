@@ -26,6 +26,8 @@ enum {
 	P_BI_TCXO,
 	P_GCC_GPLL0_OUT_EVEN,
 	P_GCC_GPLL0_OUT_MAIN,
+	P_GCC_GPLL2_OUT_EVEN,
+	P_GCC_GPLL3_OUT_EVEN,
 	P_GCC_GPLL4_OUT_MAIN,
 	P_GCC_GPLL9_OUT_MAIN,
 	P_PCIE_1_PHY_AUX_CLK,
@@ -34,6 +36,15 @@ enum {
 	P_UFS_PHY_RX_SYMBOL_1_CLK,
 	P_UFS_PHY_TX_SYMBOL_0_CLK,
 	P_USB3_PHY_WRAPPER_GCC_USB30_PIPE_CLK,
+};
+
+static struct clk_init_data gcc_gpll0_sm8475_init = {
+	.name = "gcc_gpll0",
+	.parent_data = &(const struct clk_parent_data){
+		.fw_name = "bi_tcxo",
+	},
+	.num_parents = 1,
+	.ops = &clk_alpha_pll_fixed_lucid_ole_ops,
 };
 
 static struct clk_alpha_pll gcc_gpll0 = {
@@ -51,6 +62,15 @@ static struct clk_alpha_pll gcc_gpll0 = {
 			.ops = &clk_alpha_pll_fixed_lucid_evo_ops,
 		},
 	},
+};
+
+static struct clk_init_data gcc_gpll0_out_even_sm8475_init = {
+	.name = "gcc_gpll0_out_even",
+	.parent_hws = (const struct clk_hw*[]) {
+		&gcc_gpll0.clkr.hw,
+	},
+	.num_parents = 1,
+	.ops = &clk_alpha_pll_postdiv_lucid_ole_ops,
 };
 
 static const struct clk_div_table post_div_table_gcc_gpll0_out_even[] = {
@@ -75,6 +95,49 @@ static struct clk_alpha_pll_postdiv gcc_gpll0_out_even = {
 	},
 };
 
+static struct clk_alpha_pll gcc_gpll2 = {
+	.offset = 0x2000,
+	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE],
+	.clkr = {
+		.enable_reg = 0x62018,
+		.enable_mask = BIT(2),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_gpll2",
+			.parent_data = &(const struct clk_parent_data){
+				.fw_name = "bi_tcxo",
+			},
+			.num_parents = 1,
+			.ops = &clk_alpha_pll_fixed_lucid_ole_ops,
+		},
+	},
+};
+
+static struct clk_alpha_pll gcc_gpll3 = {
+	.offset = 0x3000,
+	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE],
+	.clkr = {
+		.enable_reg = 0x62018,
+		.enable_mask = BIT(3),
+		.hw.init = &(struct clk_init_data){
+			.name = "gcc_gpll3",
+			.parent_data = &(const struct clk_parent_data){
+				.fw_name = "bi_tcxo",
+			},
+			.num_parents = 1,
+			.ops = &clk_alpha_pll_fixed_lucid_ole_ops,
+		},
+	},
+};
+
+static struct clk_init_data gcc_gpll4_sm8475_init = {
+	.name = "gcc_gpll4",
+	.parent_data = &(const struct clk_parent_data){
+		.fw_name = "bi_tcxo",
+	},
+	.num_parents = 1,
+	.ops = &clk_alpha_pll_fixed_lucid_ole_ops,
+};
+
 static struct clk_alpha_pll gcc_gpll4 = {
 	.offset = 0x4000,
 	.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_EVO],
@@ -90,6 +153,15 @@ static struct clk_alpha_pll gcc_gpll4 = {
 			.ops = &clk_alpha_pll_fixed_lucid_evo_ops,
 		},
 	},
+};
+
+static struct clk_init_data gcc_gpll9_sm8475_init = {
+	.name = "gcc_gpll9",
+	.parent_data = &(const struct clk_parent_data){
+		.fw_name = "bi_tcxo",
+	},
+	.num_parents = 1,
+	.ops = &clk_alpha_pll_fixed_lucid_ole_ops,
 };
 
 static struct clk_alpha_pll gcc_gpll9 = {
@@ -151,6 +223,22 @@ static const struct parent_map gcc_parent_map_3[] = {
 
 static const struct clk_parent_data gcc_parent_data_3[] = {
 	{ .fw_name = "bi_tcxo" },
+};
+
+static const struct parent_map gcc_parent_map_sm8475_3[] = {
+	{ P_BI_TCXO, 0 },
+	{ P_GCC_GPLL0_OUT_MAIN, 1 },
+	{ P_GCC_GPLL2_OUT_EVEN, 2 },
+	{ P_GCC_GPLL3_OUT_EVEN, 3 },
+	{ P_GCC_GPLL0_OUT_EVEN, 6 },
+};
+
+static const struct clk_parent_data gcc_parent_data_sm8475_3[] = {
+	{ .fw_name = "bi_tcxo" },
+	{ .hw = &gcc_gpll0.clkr.hw },
+	{ .hw = &gcc_gpll2.clkr.hw },
+	{ .hw = &gcc_gpll3.clkr.hw },
+	{ .hw = &gcc_gpll0_out_even.clkr.hw },
 };
 
 static const struct parent_map gcc_parent_map_5[] = {
@@ -915,6 +1003,16 @@ static struct clk_rcg2 gcc_qupv3_wrap2_s6_clk_src = {
 	.clkr.hw.init = &gcc_qupv3_wrap2_s6_clk_src_init,
 };
 
+static const struct freq_tbl ftbl_gcc_sdcc2_apps_clk_src_sm8475[] = {
+	F(400000, P_BI_TCXO, 12, 1, 4),
+	F(25000000, P_GCC_GPLL0_OUT_EVEN, 12, 0, 0),
+	F(37000000, P_GCC_GPLL9_OUT_MAIN, 16, 0, 0),
+	F(50000000, P_GCC_GPLL0_OUT_EVEN, 6, 0, 0),
+	F(100000000, P_GCC_GPLL0_OUT_EVEN, 3, 0, 0),
+	F(148000000, P_GCC_GPLL9_OUT_MAIN, 4, 0, 0),
+	{ }
+};
+
 static const struct freq_tbl ftbl_gcc_sdcc2_apps_clk_src[] = {
 	F(400000, P_BI_TCXO, 12, 1, 4),
 	F(25000000, P_GCC_GPLL0_OUT_EVEN, 12, 0, 0),
@@ -963,6 +1061,25 @@ static struct clk_rcg2 gcc_sdcc4_apps_clk_src = {
 	},
 };
 
+static const struct freq_tbl ftbl_gcc_ufs_phy_axi_clk_src_sm8475[] = {
+	F(25000000, P_GCC_GPLL0_OUT_EVEN, 12, 0, 0),
+	F(75000000, P_GCC_GPLL0_OUT_EVEN, 4, 0, 0),
+	F(150000000, P_GCC_GPLL0_OUT_MAIN, 4, 0, 0),
+	F(300000000, P_GCC_GPLL0_OUT_MAIN, 2, 0, 0),
+	F(600000000, P_GCC_GPLL0_OUT_MAIN, 1, 0, 0),
+	F(806400000, P_GCC_GPLL2_OUT_EVEN, 1, 0, 0),
+	F(850000000, P_GCC_GPLL2_OUT_EVEN, 1, 0, 0),
+	{ }
+};
+
+static struct clk_init_data gcc_ufs_phy_axi_clk_src_sm8475_init = {
+	.name = "gcc_ufs_phy_axi_clk_src",
+	.parent_data = gcc_parent_data_sm8475_3,
+	.num_parents = ARRAY_SIZE(gcc_parent_map_sm8475_3),
+	.flags = CLK_SET_RATE_PARENT,
+	.ops = &clk_rcg2_ops,
+};
+
 static const struct freq_tbl ftbl_gcc_ufs_phy_axi_clk_src[] = {
 	F(25000000, P_GCC_GPLL0_OUT_EVEN, 12, 0, 0),
 	F(75000000, P_GCC_GPLL0_OUT_EVEN, 4, 0, 0),
@@ -985,6 +1102,24 @@ static struct clk_rcg2 gcc_ufs_phy_axi_clk_src = {
 		.flags = CLK_SET_RATE_PARENT,
 		.ops = &clk_rcg2_ops,
 	},
+};
+
+static const struct freq_tbl ftbl_gcc_ufs_phy_ice_core_clk_src_sm8475[] = {
+	F(75000000, P_GCC_GPLL0_OUT_EVEN, 4, 0, 0),
+	F(150000000, P_GCC_GPLL0_OUT_MAIN, 4, 0, 0),
+	F(300000000, P_GCC_GPLL0_OUT_MAIN, 2, 0, 0),
+	F(600000000, P_GCC_GPLL0_OUT_MAIN, 1, 0, 0),
+	F(806400000, P_GCC_GPLL2_OUT_EVEN, 1, 0, 0),
+	F(850000000, P_GCC_GPLL2_OUT_EVEN, 1, 0, 0),
+	{ }
+};
+
+static struct clk_init_data gcc_ufs_phy_ice_core_clk_src_sm8475_init = {
+	.name = "gcc_ufs_phy_ice_core_clk_src",
+	.parent_data = gcc_parent_data_sm8475_3,
+	.num_parents = ARRAY_SIZE(gcc_parent_map_sm8475_3),
+	.flags = CLK_SET_RATE_PARENT,
+	.ops = &clk_rcg2_ops,
 };
 
 static const struct freq_tbl ftbl_gcc_ufs_phy_ice_core_clk_src[] = {
@@ -1030,6 +1165,14 @@ static struct clk_rcg2 gcc_ufs_phy_phy_aux_clk_src = {
 		.flags = CLK_SET_RATE_PARENT,
 		.ops = &clk_rcg2_ops,
 	},
+};
+
+static struct clk_init_data gcc_ufs_phy_unipro_core_clk_src_sm8475_init = {
+	.name = "gcc_ufs_phy_unipro_core_clk_src",
+	.parent_data = gcc_parent_data_sm8475_3,
+	.num_parents = ARRAY_SIZE(gcc_parent_map_sm8475_3),
+	.flags = CLK_SET_RATE_PARENT,
+	.ops = &clk_rcg2_ops,
 };
 
 static struct clk_rcg2 gcc_ufs_phy_unipro_core_clk_src = {
@@ -3166,6 +3309,8 @@ static struct clk_regmap *gcc_sm8450_clocks[] = {
 	[GCC_USB3_PRIM_PHY_PIPE_CLK_SRC] = &gcc_usb3_prim_phy_pipe_clk_src.clkr,
 	[GCC_VIDEO_AXI0_CLK] = &gcc_video_axi0_clk.clkr,
 	[GCC_VIDEO_AXI1_CLK] = &gcc_video_axi1_clk.clkr,
+	[GCC_GPLL2] = &gcc_gpll2.clkr,
+	[GCC_GPLL3] = &gcc_gpll3.clkr,
 };
 
 static const struct qcom_reset_map gcc_sm8450_resets[] = {
@@ -3259,6 +3404,7 @@ static const struct qcom_cc_desc gcc_sm8450_desc = {
 
 static const struct of_device_id gcc_sm8450_match_table[] = {
 	{ .compatible = "qcom,gcc-sm8450" },
+	{ .compatible = "qcom,gcc-sm8475" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, gcc_sm8450_match_table);
@@ -3276,6 +3422,40 @@ static int gcc_sm8450_probe(struct platform_device *pdev)
 				       ARRAY_SIZE(gcc_dfs_clocks));
 	if (ret)
 		return ret;
+
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,gcc-sm8475")) {
+		/* Update GCC PLL0 Config */
+		gcc_gpll0.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+		gcc_gpll0.clkr.hw.init = &gcc_gpll0_sm8475_init;
+
+		gcc_gpll0_out_even.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+		gcc_gpll0_out_even.clkr.hw.init = &gcc_gpll0_out_even_sm8475_init;
+
+		/* Update GCC PLL4 Config */
+		gcc_gpll4.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+		gcc_gpll4.clkr.hw.init = &gcc_gpll4_sm8475_init;
+
+		/* Update GCC PLL9 Config */
+		gcc_gpll9.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+		gcc_gpll9.clkr.hw.init = &gcc_gpll9_sm8475_init;
+
+		gcc_sdcc2_apps_clk_src.freq_tbl = ftbl_gcc_sdcc2_apps_clk_src_sm8475;
+
+		gcc_ufs_phy_axi_clk_src.parent_map = gcc_parent_map_sm8475_3;
+		gcc_ufs_phy_axi_clk_src.freq_tbl = ftbl_gcc_ufs_phy_axi_clk_src_sm8475;
+		gcc_ufs_phy_axi_clk_src.clkr.hw.init = &gcc_ufs_phy_axi_clk_src_sm8475_init;
+
+		gcc_ufs_phy_ice_core_clk_src.parent_map = gcc_parent_map_sm8475_3;
+		gcc_ufs_phy_ice_core_clk_src.freq_tbl = ftbl_gcc_ufs_phy_ice_core_clk_src_sm8475;
+		gcc_ufs_phy_ice_core_clk_src.clkr.hw.init = &gcc_ufs_phy_ice_core_clk_src_sm8475_init;
+
+		gcc_ufs_phy_unipro_core_clk_src.parent_map = gcc_parent_map_sm8475_3;
+		gcc_ufs_phy_unipro_core_clk_src.freq_tbl = ftbl_gcc_ufs_phy_ice_core_clk_src_sm8475;
+		gcc_ufs_phy_unipro_core_clk_src.clkr.hw.init = &gcc_ufs_phy_unipro_core_clk_src_sm8475_init;
+	} else {
+		gcc_sm8450_desc.clks[GCC_GPLL2] = NULL;
+		gcc_sm8450_desc.clks[GCC_GPLL3] = NULL;
+	}
 
 	/* FORCE_MEM_CORE_ON for ufs phy ice core clocks */
 	regmap_update_bits(regmap, gcc_ufs_phy_ice_core_clk.halt_reg, BIT(14), BIT(14));
