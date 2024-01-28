@@ -957,7 +957,7 @@ static const char * const pll_bist_groups[] = {
 };
 
 static const char * const pll_clk_groups[] = {
-	"gpio107",
+	"gpio98", "gpio107",
 };
 
 static const char * const pri_mi2s_groups[] = {
@@ -1511,7 +1511,7 @@ static const struct msm_pingroup sm8450_groups[] = {
 	[95] = PINGROUP(95, pcie0_clkreqn, cmu_rng, phase_flag, _, _, _, _, _, _),
 	[96] = PINGROUP(96, cmu_rng, phase_flag, _, _, _, _, _, _, _),
 	[97] = PINGROUP(97, cmu_rng, phase_flag, _, _, _, _, _, _, _),
-	[98] = PINGROUP(98, pcie1_clkreqn, phase_flag, _, _, _, _, _, _, _),
+	[98] = PINGROUP(98, pcie1_clkreqn, phase_flag, pll_clk, _, _, _, _, _, _),
 	[99] = PINGROUP(99, phase_flag, cri_trng, _, _, _, _, _, _, _),
 	[100] = PINGROUP(100, cam_mclk, qdss_gpio, _, _, _, _, _, _, _),
 	[101] = PINGROUP(101, cam_mclk, qdss_gpio, _, _, _, _, _, _, _),
