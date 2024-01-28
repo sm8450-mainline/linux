@@ -736,6 +736,7 @@ static const struct qcom_cc_desc gpu_cc_sm8450_desc = {
 
 static const struct of_device_id gpu_cc_sm8450_match_table[] = {
 	{ .compatible = "qcom,sm8450-gpucc" },
+	{ .compatible = "qcom,sm8475-gpucc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, gpu_cc_sm8450_match_table);
@@ -747,6 +748,28 @@ static int gpu_cc_sm8450_probe(struct platform_device *pdev)
 	regmap = qcom_cc_map(pdev, &gpu_cc_sm8450_desc);
 	if (IS_ERR(regmap))
 		return PTR_ERR(regmap);
+
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sm8475-gpucc")) {
+		/* Update GPUCC PLL0 Config */
+		gpu_cc_pll0_config.config_ctl_hi1_val = 0x82aa299c;
+		gpu_cc_pll0_config.test_ctl_val = 0x00000000;
+		gpu_cc_pll0_config.test_ctl_hi_val = 0x00000003;
+		gpu_cc_pll0_config.test_ctl_hi1_val = 0x00009000;
+		gpu_cc_pll0_config.test_ctl_hi2_val = 0x00000034;
+		gpu_cc_pll0_config.user_ctl_hi_val = 0x00000005;
+
+		gpu_cc_pll0.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+
+		/* Update GPUCC PLL1 Config */
+		gpu_cc_pll1_config.config_ctl_hi1_val = 0x82aa299c;
+		gpu_cc_pll1_config.test_ctl_val = 0x00000000;
+		gpu_cc_pll1_config.test_ctl_hi_val = 0x00000003;
+		gpu_cc_pll1_config.test_ctl_hi1_val = 0x00009000;
+		gpu_cc_pll1_config.test_ctl_hi2_val = 0x00000034;
+		gpu_cc_pll1_config.user_ctl_hi_val = 0x00000005;
+
+		gpu_cc_pll1.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+	}
 
 	clk_lucid_evo_pll_configure(&gpu_cc_pll0, regmap, &gpu_cc_pll0_config);
 	clk_lucid_evo_pll_configure(&gpu_cc_pll1, regmap, &gpu_cc_pll1_config);
