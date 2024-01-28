@@ -35,7 +35,7 @@ static const struct pll_vco lucid_evo_vco[] = {
 	{ 249600000, 2020000000, 0 },
 };
 
-static const struct alpha_pll_config video_cc_pll0_config = {
+static struct alpha_pll_config video_cc_pll0_config = {
 	/* .l includes CAL_L_VAL, L_VAL fields */
 	.l = 0x0044001e,
 	.alpha = 0x0,
@@ -63,7 +63,7 @@ static struct clk_alpha_pll video_cc_pll0 = {
 	},
 };
 
-static const struct alpha_pll_config video_cc_pll1_config = {
+static struct alpha_pll_config video_cc_pll1_config = {
 	/* .l includes CAL_L_VAL, L_VAL fields */
 	.l = 0x0044002b,
 	.alpha = 0xc000,
@@ -397,6 +397,7 @@ static struct qcom_cc_desc video_cc_sm8450_desc = {
 
 static const struct of_device_id video_cc_sm8450_match_table[] = {
 	{ .compatible = "qcom,sm8450-videocc" },
+	{ .compatible = "qcom,sm8475-videocc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, video_cc_sm8450_match_table);
@@ -418,6 +419,30 @@ static int video_cc_sm8450_probe(struct platform_device *pdev)
 	if (IS_ERR(regmap)) {
 		pm_runtime_put(&pdev->dev);
 		return PTR_ERR(regmap);
+	}
+
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sm8475-videocc")) {
+		/* Update VideoCC PLL0 Config */
+		video_cc_pll0_config.l = 0x1e;
+		video_cc_pll0_config.config_ctl_hi1_val = 0x82aa299c;
+		video_cc_pll0_config.test_ctl_val = 0x00000000;
+		video_cc_pll0_config.test_ctl_hi_val = 0x00000003;
+		video_cc_pll0_config.test_ctl_hi1_val = 0x00009000;
+		video_cc_pll0_config.test_ctl_hi2_val = 0x00000034;
+		video_cc_pll0_config.user_ctl_hi_val = 0x00000005;
+
+		video_cc_pll0.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+
+		/* Update VideoCC PLL1 Config */
+		video_cc_pll1_config.l = 0x2b;
+		video_cc_pll1_config.config_ctl_hi1_val = 0x82aa299c;
+		video_cc_pll1_config.test_ctl_val = 0x00000000;
+		video_cc_pll1_config.test_ctl_hi_val = 0x00000003;
+		video_cc_pll1_config.test_ctl_hi1_val = 0x00009000;
+		video_cc_pll1_config.test_ctl_hi2_val = 0x00000034;
+		video_cc_pll1_config.user_ctl_hi_val = 0x00000005;
+
+		video_cc_pll1.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
 	}
 
 	clk_lucid_evo_pll_configure(&video_cc_pll0, regmap, &video_cc_pll0_config);
