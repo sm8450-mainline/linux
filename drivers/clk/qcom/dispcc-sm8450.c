@@ -75,7 +75,7 @@ static const struct pll_vco lucid_evo_vco[] = {
 	{ 249600000, 2000000000, 0 },
 };
 
-static const struct alpha_pll_config disp_cc_pll0_config = {
+static struct alpha_pll_config disp_cc_pll0_config = {
 	.l = 0xD,
 	.alpha = 0x6492,
 	.config_ctl_val = 0x20485699,
@@ -83,6 +83,15 @@ static const struct alpha_pll_config disp_cc_pll0_config = {
 	.config_ctl_hi1_val = 0x32AA299C,
 	.user_ctl_val = 0x00000000,
 	.user_ctl_hi_val = 0x00000805,
+};
+
+static struct clk_init_data disp_cc_pll0_sm8475_init = {
+	.name = "disp_cc_pll0",
+	.parent_data = &(const struct clk_parent_data) {
+		.index = DT_BI_TCXO,
+	},
+	.num_parents = 1,
+	.ops = &clk_alpha_pll_reset_lucid_ole_ops,
 };
 
 static struct clk_alpha_pll disp_cc_pll0 = {
@@ -102,7 +111,7 @@ static struct clk_alpha_pll disp_cc_pll0 = {
 	},
 };
 
-static const struct alpha_pll_config disp_cc_pll1_config = {
+static struct alpha_pll_config disp_cc_pll1_config = {
 	.l = 0x1F,
 	.alpha = 0x4000,
 	.config_ctl_val = 0x20485699,
@@ -110,6 +119,15 @@ static const struct alpha_pll_config disp_cc_pll1_config = {
 	.config_ctl_hi1_val = 0x32AA299C,
 	.user_ctl_val = 0x00000000,
 	.user_ctl_hi_val = 0x00000805,
+};
+
+static struct clk_init_data disp_cc_pll1_sm8475_init = {
+	.name = "disp_cc_pll1",
+	.parent_data = &(const struct clk_parent_data) {
+		.index = DT_BI_TCXO,
+	},
+	.num_parents = 1,
+	.ops = &clk_alpha_pll_reset_lucid_ole_ops,
 };
 
 static struct clk_alpha_pll disp_cc_pll1 = {
@@ -1746,6 +1764,7 @@ static struct qcom_cc_desc disp_cc_sm8450_desc = {
 
 static const struct of_device_id disp_cc_sm8450_match_table[] = {
 	{ .compatible = "qcom,sm8450-dispcc" },
+	{ .compatible = "qcom,sm8475-dispcc" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, disp_cc_sm8450_match_table);
@@ -1767,6 +1786,30 @@ static int disp_cc_sm8450_probe(struct platform_device *pdev)
 	if (IS_ERR(regmap)) {
 		ret = PTR_ERR(regmap);
 		goto err_put_rpm;
+	}
+
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sm8475-dispcc")) {
+		/* Update DISPCC PLL0 Config */
+		disp_cc_pll0_config.config_ctl_hi1_val = 0x82aa299c;
+		disp_cc_pll0_config.test_ctl_val = 0x00000000;
+		disp_cc_pll0_config.test_ctl_hi_val = 0x00000003;
+		disp_cc_pll0_config.test_ctl_hi1_val = 0x00009000;
+		disp_cc_pll0_config.test_ctl_hi2_val = 0x00000034;
+		disp_cc_pll0_config.user_ctl_hi_val = 0x00000005;
+
+		disp_cc_pll0.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+		disp_cc_pll0.clkr.hw.init = &disp_cc_pll0_sm8475_init;
+
+		/* Update DISPCC PLL1 Config */
+		disp_cc_pll1_config.config_ctl_hi1_val = 0x82aa299c;
+		disp_cc_pll1_config.test_ctl_val = 0x00000000;
+		disp_cc_pll1_config.test_ctl_hi_val = 0x00000003;
+		disp_cc_pll1_config.test_ctl_hi1_val = 0x00009000;
+		disp_cc_pll1_config.test_ctl_hi2_val = 0x00000034;
+		disp_cc_pll1_config.user_ctl_hi_val = 0x00000005;
+
+		disp_cc_pll1.regs = clk_alpha_pll_regs[CLK_ALPHA_PLL_TYPE_LUCID_OLE];
+		disp_cc_pll1.clkr.hw.init = &disp_cc_pll1_sm8475_init;
 	}
 
 	clk_lucid_evo_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll0_config);
