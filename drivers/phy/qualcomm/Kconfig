@@ -143,6 +143,14 @@ config PHY_QCOM_EUSB2_REPEATER
 	  PMICs. The repeater is paired with a Synopsys eUSB2 Phy
 	  on Qualcomm SOCs.
 
+config PHY_QCOM_I2C_EUSB2_REPEATER
+	tristate "Qualcomm SNPS I2C eUSB2 Repeater Driver"
+	depends on OF && I2C && (ARCH_QCOM || COMPILE_TEST)
+	select GENERIC_PHY
+	help
+	  Enable support for high-speed SNPS eUSB2 repeaters on Qualcomm
+	  platforms connected via I2C.
+
 config PHY_QCOM_M31_USB
 	tristate "Qualcomm M31 HS PHY driver support"
 	depends on USB && (ARCH_QCOM || COMPILE_TEST)
