@@ -163,6 +163,7 @@ enum {
 #define UNIPRO_CORE_CLK_FREQ_300_MHZ           300
 #define UNIPRO_CORE_CLK_FREQ_201_5_MHZ         202
 #define UNIPRO_CORE_CLK_FREQ_403_MHZ           403
+#define UNIPRO_CORE_CLK_FREQ_850_MHZ           850
 
 /* TX_HSG1_SYNC_LENGTH attr value */
 #define PA_TX_HSG1_SYNC_LENGTH_VAL	0x4A
