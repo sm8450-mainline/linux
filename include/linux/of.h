@@ -11,6 +11,8 @@
  * Updates for SPARC64 by David S. Miller
  * Derived from PowerPC and Sparc prom.h files by Stephen Rothwell, IBM Corp.
  */
+
+#include <linux/cleanup.h>
 #include <linux/types.h>
 #include <linux/bitops.h>
 #include <linux/errno.h>
@@ -886,6 +888,8 @@ static inline const void *of_device_get_match_data(const struct device *dev)
 #define of_match_ptr(_ptr)	NULL
 #define of_match_node(_matches, _node)	NULL
 #endif /* CONFIG_OF */
+
+DEFINE_FREE(of_node, struct device_node *, if (_T) of_node_put(_T))
 
 /* Default string compare functions, Allow arch asm/prom.h to override */
 #if !defined(of_compat_cmp)
