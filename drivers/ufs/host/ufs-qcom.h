@@ -134,6 +134,7 @@ enum {
 #define UNIPRO_CORE_CLK_FREQ_300_MHZ           300
 #define UNIPRO_CORE_CLK_FREQ_201_5_MHZ         202
 #define UNIPRO_CORE_CLK_FREQ_403_MHZ           403
+#define UNIPRO_CORE_CLK_FREQ_850_MHZ           850
 
 static inline void
 ufs_qcom_get_controller_revision(struct ufs_hba *hba,
