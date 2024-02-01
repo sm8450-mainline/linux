@@ -1194,6 +1194,9 @@ static int ufs_qcom_set_clk_40ns_cycles(struct ufs_hba *hba,
 	 * generic formulae.
 	 */
 	switch (cycles_in_1us) {
+	case UNIPRO_CORE_CLK_FREQ_850_MHZ:
+		cycles_in_40ns = 34;
+		break;
 	case UNIPRO_CORE_CLK_FREQ_403_MHZ:
 		cycles_in_40ns = 16;
 		break;
