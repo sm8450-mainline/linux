@@ -8,6 +8,7 @@
 #include <dt-bindings/arm/qcom,ids.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
 #include <dt-bindings/leds/common.h>
+#include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
 
 #include "sm8475.dtsi"
 #include "pm8350.dtsi"
@@ -21,7 +22,7 @@
 	model = "Galaxy Z Fold4";
 	chassis-type = "phablet";
 
-	qcom,msm-id = <530 0x10000 0>;
+	qcom,msm-id = <QCOM_ID_SM8475 0x10000>;
 
 	reserved-memory {
 		/* Clear this up, this is awful */
@@ -584,32 +585,18 @@
 	status = "okay";
 };
 
-&gpi_dma1 {
-	status = "okay";
-};
-
-&gpi_dma2 {
-	status = "okay";
-};
-
 &i2c5 {
 	clock-frequency = <100000>;
 	status = "okay";
 
-	/* nq@64 rtc6226 */
-	/* fsa4480@42 qcom,fsa4480-i2c */
-	/* redriver@1c onnn,redriver */
-	/* aw20036_led@3a awinic,aw20036_led */
-	/* eusb2_repeater@4f nxp,eusb2-repeater */
-
-	nxp_eusb2_repeater: eusb2_repeater@4f {
+	nxp_eusb2_repeater: repeater@4f {
 		compatible = "nxp,eusb2-repeater";
 		reg = <0x4f>;
 		vdd18-supply = <&pm8350_s10>;
 		vdd3-supply = <&pm8350_l2>;
 		reset-gpio = <&pm8350c_gpios 7 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&eusb2_reset_ctrl_default>;
+		pinctrl-0 = <&eusb2_reset_default>;
 		#phy-cells = <0>;
 		qcom,param-override-seq =
 				/* Rx squelch detection threshold to 110mV; default is 125mV */
@@ -624,37 +611,15 @@
 	};
 };
 
-&i2c9 {
-	clock-frequency = <1000000>;
-	status = "okay";
-
-	/* nq@28(ts) qcom,sn-nci */
-};
-
-&i2c13 {
-	clock-frequency = <1000000>;
-	status = "okay";
-
-	/* tfa98xx@34 */
-	/* tfa98xx@35 */
-};
-
-&i2c18 {
-	clock-frequency = <1000000>;
-	status = "okay";
-
-	/* haptic_hv@5a awinic,aw8692x */
-};
-
 &pm8350c_gpios {
-	eusb2_reset_ctrl_default: eusb2_reset_ctrl_default {
+	eusb2_reset_default: eusb2-reset-default-state {
 		pins = "gpio7";
-		function = "normal";
+		function = PMIC_GPIO_FUNC_NORMAL;
 		input-enable;
 		output-enable;
 		bias-disable;
 		power-source = <1>;	/* 1.8V */
-		qcom,drive-strength = <2>;
+		qcom,drive-strength = <PMIC_GPIO_STRENGTH_MED>;
 	};
 };
 
