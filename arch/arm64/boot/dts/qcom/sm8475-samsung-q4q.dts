@@ -23,20 +23,6 @@
 
 	qcom,msm-id = <530 0x10000 0>;
 
-	chosen {
-
-		framebuffer0: framebuffer@b8000000 {
-			compatible = "simple-framebuffer";
-			reg = <0 0xb8000000 0 (2176 * 1812 * 4)>;
-			width = <1812>;
-			height = <2176>;
-			stride = <(1812 * 4)>;
-			format = "a8r8g8b8";
-			status= "okay";
-		};
-
-	};
-
 	reserved-memory {
 		/* Clear this up, this is awful */
 		tme_crash_dump_region@808a0000 {
