@@ -590,7 +590,7 @@
 	status = "okay";
 
 	nxp_eusb2_repeater: repeater@4f {
-		compatible = "nxp,eusb2-repeater";
+		compatible = "ti,eusb2-repeater";
 		reg = <0x4f>;
 		vdd18-supply = <&pm8350_s10>;
 		vdd3-supply = <&pm8350_l2>;
@@ -598,16 +598,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&eusb2_reset_default>;
 		#phy-cells = <0>;
-		qcom,param-override-seq =
-				/* Rx squelch detection threshold to 110mV; default is 125mV */
-				<0x40 0x06
-				/*
-				 * Tx Deemphasis to 2dB, Tx Deemphasis bit duration to 0.8UI;
-				 * default is 0 for both
-				 */
-				0x22 0x07
-				/* Output Voltage Swing to 550mV; default is 450mV */
-				0x64 0x08>;
+		qcom,param-override-seq = <0x7d 0x70 0x3e 0x71 0x76 0x73 0x70 0x79>;
+		qcom,param-host-override-seq = <0x7d 0x70 0x3e 0x71 0x76 0x73 0x70 0x79>;
 	};
 };
 
@@ -643,12 +635,12 @@
 };
 
 &tlmm {
-	status = "disabled";
-	gpio-reserved-ranges = <28 4>;
+	status = "okay";
+	gpio-reserved-ranges = <36 37 38 39 50 93>;
 };
 
 &ufs_mem_hc {
-	status = "disabled";
+	status = "okay";
 
 	reset-gpios = <&tlmm 210 GPIO_ACTIVE_LOW>;
 
