@@ -417,6 +417,10 @@
 	};
 };
 
+&dispcc {
+	status = "okay";
+};
+
 &gpi_dma0 {
 	status = "okay";
 };
@@ -427,6 +431,14 @@
 
 &gpi_dma2 {
 	status = "okay";
+};
+
+&gpu {
+	status = "okay";
+
+	zap-shader {
+		firmware-name = "qcom/a730_zap.mbn";
+	};
 };
 
 &i2c5 {
@@ -481,6 +493,42 @@
 	status = "okay";
 
 	/* haptic_hv@5a awinic,aw8692x */
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&pm8350_l6>;
+	status = "okay";
+
+	panel@0 {
+		compatible = "mdss,nt37705-visionox-amoled-120hz";
+		reg = <0>;
+
+		reset-gpios = <&tlmm 0 GPIO_ACTIVE_HIGH>;
+
+		vddd-supply = <&pm8350c_l10>;
+		vci-supply = <&pm8350c_l13>;
+		vddio-supply = <&pm8350c_l12>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel_in>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&pm8350_l5>;
+	status = "okay";
 };
 
 &pm8350c_gpios {
