@@ -643,11 +643,12 @@
 };
 
 &tlmm {
+	status = "disabled";
 	gpio-reserved-ranges = <28 4>;
 };
 
 &ufs_mem_hc {
-	status = "okay";
+	status = "disabled";
 
 	reset-gpios = <&tlmm 210 GPIO_ACTIVE_LOW>;
 
