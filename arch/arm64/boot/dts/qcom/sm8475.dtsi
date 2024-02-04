@@ -56,6 +56,64 @@
 	compatible = "qcom,sm8475-gcc";
 };
 
+&gpu {
+	gpu_opp_table: opp-table {
+		compatible = "operating-points-v2";
+		opp-900000000 {
+			opp-hz = /bits/ 64 <900000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_TURBO_L1>;
+		};
+		opp-862000000 {
+			opp-hz = /bits/ 64 <862000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_TURBO>;
+		};
+		opp-815000000 {
+			opp-hz = /bits/ 64 <815000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_NOM_L1>;
+		};
+		opp-765000000 {
+			opp-hz = /bits/ 64 <765000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_NOM>;
+		};
+		opp-710000000 {
+			opp-hz = /bits/ 64 <710000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_SVS_L2>;
+		};
+		opp-645000000 {
+			opp-hz = /bits/ 64 <645000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_SVS_L1>;
+		};
+		opp-580000000 {
+			opp-hz = /bits/ 64 <580000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_SVS_L0>;
+		};
+		opp-515000000 {
+			opp-hz = /bits/ 64 <515000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_SVS>;
+		};
+		opp-439000000 {
+			opp-hz = /bits/ 64 <439000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS_L2>;
+		};
+		opp-364000000 {
+			opp-hz = /bits/ 64 <364000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS_L1>;
+		};
+		opp-324000000 {
+			opp-hz = /bits/ 64 <324000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS>;
+		};
+		opp-285000000 {
+			opp-hz = /bits/ 64 <285000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS_D1>;
+		};
+		opp-220000000 {
+			opp-hz = /bits/ 64 <220000000>;
+			opp-level = <RPMH_REGULATOR_LEVEL_MIN_SVS>;
+		};
+	};
+};
+
 &gpucc {
 	compatible = "qcom,sm8475-gpucc";
 };
