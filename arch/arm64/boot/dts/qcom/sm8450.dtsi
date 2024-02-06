@@ -4028,8 +4028,31 @@
 			};
 
 			qup_uart20_default: qup-uart20-default-state {
-				pins = "gpio76", "gpio77", "gpio78", "gpio79";
-				function = "qup20";
+				cts-pins {
+					pins = "gpio76";
+					function = "qup20";
+					bias-disable;
+				};
+
+				rts-pins {
+					pins = "gpio77";
+					function = "qup20";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+
+				tx-pins {
+					pins = "gpio78";
+					function = "qup20";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+
+				rx-pins {
+					pins = "gpio79";
+					function = "qup20";
+					bias-pull-down; // bias-disable;
+				};
 			};
 		};
 
