@@ -36,7 +36,7 @@
 		#size-cells = <2>;
 		ranges;
 
-		bootargs = "PMOS_NOSPLASH console=tty0 clk_ignore_unused";
+		bootargs = "PMOS_NOSPLASH console=tty0";
 
 		framebuffer: framebuffer@b8000000 {
 			compatible = "simple-framebuffer";
@@ -45,6 +45,8 @@
 			height = <2412>;
 			stride = <(1080 * 4)>;
 			format = "a8r8g8b8";
+
+			clocks = <&gcc GCC_DISP_HF_AXI_CLK>;
 		};
 	};
 
