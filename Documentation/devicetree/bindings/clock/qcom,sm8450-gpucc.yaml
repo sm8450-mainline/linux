@@ -15,8 +15,10 @@ description: |
 
   See also::
     include/dt-bindings/clock/qcom,sm8450-gpucc.h
+    include/dt-bindings/clock/qcom,sm8475-gpucc.h
     include/dt-bindings/clock/qcom,sm8550-gpucc.h
     include/dt-bindings/reset/qcom,sm8450-gpucc.h
+    include/dt-bindings/reset/qcom,sm8475-gpucc.h
     include/dt-bindings/reset/qcom,sm8650-gpucc.h
     include/dt-bindings/reset/qcom,x1e80100-gpucc.h
 
@@ -24,6 +26,7 @@ properties:
   compatible:
     enum:
       - qcom,sm8450-gpucc
+      - qcom,sm8475-gpucc
       - qcom,sm8550-gpucc
       - qcom,sm8650-gpucc
       - qcom,x1e80100-gpucc
