@@ -1,0 +1,1 @@
+qcom,sm8450-gcc.h
