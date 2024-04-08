@@ -207,7 +207,6 @@
 		compatible = "qcom,pm8350-rpmh-regulators";
 		qcom,pmic-id = "b";
 
-		/*
 		vdd-s1-supply = <&vph_pwr>;
 		vdd-s2-supply = <&vph_pwr>;
 		vdd-s3-supply = <&vph_pwr>;
@@ -225,7 +224,6 @@
 		vdd-l2-l7-supply = <&vreg_bob>;
 		vdd-l3-l5-supply = <&pm8350_s11>;
 		vdd-l6-l9-l10-supply = <&pm8350_s12>;
-		*/
 
 		/*
 		 * ARC regulators:
@@ -305,7 +303,6 @@
 		compatible = "qcom,pm8350c-rpmh-regulators";
 		qcom,pmic-id = "c";
 
-		/*
 		vdd-s1-supply = <&vph_pwr>;
 		vdd-s2-supply = <&vph_pwr>;
 		vdd-s3-supply = <&vph_pwr>;
@@ -324,7 +321,6 @@
 		vdd-l10-supply = <&pm8350_s12>;
 
 		vdd-bob-supply = <&vph_pwr>;
-		*/
 
 		/*
 		 * ARC regulators:
@@ -424,7 +420,6 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
-		/* https://github.com/Kenvyra/android_kernel_xiaomi_sm8450-devicetrees/blob/kenvyra-13.0/qcom/cupid-sm8450.dtsi#L57 */
 		pm8350c_l11: ldo11 {
 			regulator-name = "pm8350c_l11";
 			regulator-min-microvolt = <3200000>;
@@ -454,7 +449,6 @@
 		compatible = "qcom,pm8450-rpmh-regulators";
 		qcom,pmic-id = "h";
 
-		/*
 		vdd-s1-supply = <&vph_pwr>;
 		vdd-s2-supply = <&vph_pwr>;
 		vdd-s3-supply = <&vph_pwr>;
@@ -465,7 +459,6 @@
 		vdd-l2-supply = <&vreg_bob>;
 		vdd-l3-supply = <&vreg_bob>;
 		vdd-l4-supply = <&vreg_bob>;
-		*/
 
 		/*
 		 * ARC regulators:
@@ -500,7 +493,6 @@
 		compatible = "qcom,pmr735a-rpmh-regulators";
 		qcom,pmic-id = "e";
 
-		/*
 		vdd-s1-supply = <&vph_pwr>;
 		vdd-s2-supply = <&vph_pwr>;
 		vdd-s3-supply = <&vph_pwr>;
@@ -510,7 +502,6 @@
 		vdd-l4-supply = <&pm8350c_s1>;
 		vdd-l5-l6-supply = <&pm8350c_s1>;
 		vdd-l7-bob-supply = <&vreg_bob>;
-		*/
 
 		pmr735a_s1: smps1 {
 			regulator-name = "pmr735a_s1";
