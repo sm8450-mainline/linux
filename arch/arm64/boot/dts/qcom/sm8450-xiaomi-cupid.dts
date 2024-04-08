@@ -25,6 +25,7 @@
 	chassis-type = "handset";
 
 	aliases {
+		hsuart0 = &uart20;
 		serial0 = &uart7;
 	};
 
@@ -55,8 +56,23 @@
 	};
 
 	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
 		bootargs = "PMOS_NOSPLASH console=tty0";
-		stdout-path = "serial0:115200n8";
+		//stdout-path = "serial0:115200n8";
+
+		framebuffer: framebuffer@b8000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			width = <1080>;
+			height = <2400>;
+			stride = <(1080 * 4)>;
+			format = "a8r8g8b8";
+
+			clocks = <&gcc GCC_DISP_HF_AXI_CLK>;
+		};
 	};
 
 	gpio-keys {
@@ -75,11 +91,11 @@
 		};
 	};
 
-	/*
 	pmic-glink {
 		compatible = "qcom,sm8450-pmic-glink", "qcom,pmic-glink";
 		#address-cells = <1>;
 		#size-cells = <0>;
+		orientation-gpios = <&tlmm 91 GPIO_ACTIVE_HIGH>;
 
 		connector@0 {
 			compatible = "usb-c-connector";
@@ -111,7 +127,6 @@
 			};
 		};
 	};
-	*/
 
 	reserved-memory {
 		xbl_ramdump_mem: memory@a6b80000 {
@@ -143,13 +158,10 @@
 			qcom,vmid = <15>;
 		};
 
-		/* The bootloader will enable mdss clocks if this code is present.
-		splash_memory: splash_region {
-			reg = <0x00 0xb8000000 0x0 0x2b00000>;
+		splash_region@b8000000 {
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
 			no-map;
-			label = "cont_splash_region";
 		};
-		*/
 
 		ramoops@a7000000 {
 			compatible = "ramoops";
@@ -563,7 +575,7 @@
 };
 
 &dispcc {
-	status = "okay";
+	status = "disabled";
 };
 
 &gpi_dma0 {
@@ -579,7 +591,7 @@
 };
 
 &gpu {
-	status = "okay";
+	status = "disabled";
 
 	zap-shader {
 		firmware-name = "qcom/a730_zap.mbn";
@@ -676,12 +688,12 @@
 };
 
 &mdss {
-	status = "okay";
+	status = "disabled";
 };
 
 &mdss_dsi0 {
 	vdda-supply = <&pm8350_l6>;
-	status = "okay";
+	status = "disabled";
 
 	panel@0 {
 		compatible = "mdss,l3-42-02-0a-dsc";
@@ -713,7 +725,7 @@
 
 &mdss_dsi0_phy {
 	vdds-supply = <&pm8350_l5>;
-	status = "okay";
+	status = "disabled";
 };
 
 &pcie0 {
@@ -1019,10 +1031,10 @@
 	status = "okay";
 };
 
-/*
 &uart20 {
 	status = "okay";
 
+	/*
 	bluetooth {
 		compatible = "qcom,wcn6855-bt";
 
@@ -1041,8 +1053,8 @@
 		pinctrl-0 = <&bt_default>;
 		pinctrl-names = "default";
 	};
+	*/
 };
-*/
 
 &ufs_mem_hc {
 	status = "okay";
@@ -1071,18 +1083,16 @@
 
 &usb_1_dwc3 {
 	dr_mode = "otg";
-	//usb-role-switch;
+	usb-role-switch;
 	maximum-speed = "high-speed";
 	/* Remove USB3 phy */
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
 };
 
-/*
 &usb_1_dwc3_hs {
 	remote-endpoint = <&pmic_glink_hs_in>;
 };
-*/
 
 &usb_1_hsphy {
 	vdda-pll-supply = <&pm8350_l5>;
