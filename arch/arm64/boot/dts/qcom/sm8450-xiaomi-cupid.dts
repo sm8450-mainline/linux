@@ -182,23 +182,6 @@
 		regulator-always-on;
 		regulator-boot-on;
 	};
-
-	/* This is a hack and taken from qcom,cnss-qca6490 in downstream */
-	wlan_regulator: wlan-regulator {
-		compatible = "regulator-wlan";
-		regulator-name = "wlan";
-
-		enable-gpio = <&tlmm 80 GPIO_ACTIVE_HIGH>;
-
-		supply-count = <6>;
-
-		vin0-supply = <&pmr735a_s2>; // vdd-wlan-aon
-		vin1-supply = <&pm8350_s11>; // vdd-wlan-dig
-		vin2-supply = <&pm8350_s10>; // vdd-wlan-io
-		vin3-supply = <&pm8350c_s1>; // vdd-wlan-rfa1
-		vin4-supply = <&pm8350_s12>; // vdd-wlan-rfa2
-		vin5-supply = <&pmr735a_l7>; // wlan-ant-switch
-	};
 };
 
 
@@ -589,7 +572,6 @@
 	};
 };
 
-// i2c0 in downstream
 &i2c5 {
 	clock-frequency = <100000>;
 	status = "okay";
@@ -604,13 +586,13 @@
 		mode-switch;
 		orientation-switch;
 
-		/*
 		port {
+			/*
 			fsa4480_sbu_mux: endpoint {
 				remote-endpoint = <&pmic_glink_sbu>;
 			};
+			*/
 		};
-		*/
 	};
 
 	/* nq @ 64 */
@@ -620,7 +602,6 @@
 	/* pm8008j @ d */
 };
 
-// i2c1 in downstream
 &i2c9 {
 	clock-frequency = <100000>;
 	status = "okay";
@@ -628,7 +609,18 @@
 	/* nq @ 28 */
 };
 
-// i2c2 in downstream
+&spi13 {
+	clock-frequency = <50000000>;
+	status = "okay";
+
+	irled@0 {
+		compatible = "ir-spi-led";
+		reg = <0>;
+		power-supply = <&vph_pwr>;
+		spi-max-frequency = <19200000>;
+	};
+};
+
 &i2c15 {
 	clock-frequency = <100000>;
 	status = "okay";
@@ -670,7 +662,6 @@
 	};
 };
 
-// i2c3 in downstream
 &i2c16 {
 	clock-frequency = <100000>;
 	status = "okay";
@@ -720,18 +711,28 @@
 };
 
 &pcie0 {
-	/*
-	vdda-supply = <&wlan_regulator>;
-
-	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
-	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
-
-	pinctrl-0 = <&pcie0_default_state>, <&pmk8550_sleep_clk>;
-	pinctrl-names = "default";
-	*/
-
 	status = "okay";
 };
+
+/* TODO: Add support for qca6490-pmu and use that as the supplies so it will power on properly
+&pcieport0 {
+	wifi@0 {
+		compatible = "pci17cb,1103";
+		reg = <0x10000 0x0 0x0 0x0 0x0>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&cnss_wlan_en_active>;
+		pinctrl-1 = <&cnss_wlan_en_sleep>;
+		enable-gpios = <&tlmm 80 GPIO_ACTIVE_HIGH>;
+
+		vddio-supply = <&pm8350_s10>;
+		vdd-supply = <&pmr735a_l7>; // actually wlan-ant-switch-supply
+		vdd-aon-suppply = <&pmr735a_s2>;
+		vdd-dig-supply = <&pm8350_s11>;
+		vdd-rfa1-supply = <&pm8350c_s1>;
+		vdd-rfa2-supply = <&pm8350_s12>;
+	};
+};
+*/
 
 &pcie0_phy {
 	vdda-phy-supply = <&pm8350_l5>;
@@ -856,11 +857,88 @@
 		bias-pull-down;
 	};
 
+	tert_tdm_clk_active: tert-tdm-clk-active-state {
+		pins = "gpio121";
+		function = "mi2s2_sck";
+		drive-strength = <6>;
+		bias-disable;
+		output-high;
+	};
+
+	tert_tdm_clk_sleep: tert-tdm-clk-sleep-state {
+		pins = "gpio121";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		input-enable;
+	};
+
+	tert_tdm_ws_active: tert-tdm-ws-active-state {
+		pins = "gpio123";
+		function = "mi2s2_ws";
+		drive-strength = <8>;
+		bias-disable;
+		output-high;
+	};
+
+	tert_tdm_ws_sleep: tert-tdm-ws-sleep-state {
+		pins = "gpio123";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		input-enable;
+	};
+
+	tert_tdm_din_active: tert-tdm-din-active-state {
+		pins = "gpio122";
+		function = "mi2s2_data0";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	tert_tdm_din_sleep: tert-tdm-din-sleep-state {
+		pins = "gpio122";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		input-enable;
+	};
+
+	tert_tdm_dout_active: tert-tdm-dout-active-state {
+		pins = "gpio124";
+		function = "mi2s2_data1";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	tert_tdm_dout_sleep: tert-tdm-dout-sleep-state {
+		pins = "gpio124";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		input-enable;
+	};
+
 	wcd_default: wcd-reset-n-active-state {
 		pins = "gpio43";
 		function = "gpio";
 		drive-strength = <16>;
 		bias-disable;
+		output-low;
+	};
+
+	cnss_wlan_en_active: cnss-wlan-en-active-state {
+		pins = "gpio80";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-pull-up;
+	};
+
+	cnss_wlan_en_sleep: cnss-wlan-en-sleep-state {
+		pins = "gpio80";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
 		output-low;
 	};
 };
@@ -904,29 +982,62 @@
 
 &sound {
 	compatible = "qcom,sm8450-sndcard";
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&tert_tdm_clk_active &tert_tdm_ws_active
+			&tert_tdm_din_active &tert_tdm_dout_active>;
+	pinctrl-1 = <&tert_tdm_clk_sleep &tert_tdm_ws_sleep
+			&tert_tdm_din_sleep &tert_tdm_dout_sleep>;
 	model = "Xiaomi 12";
 	/*
-	audio-routing = "SpkrLeft IN", "WSA_SPK1 OUT",
-			"SpkrRight IN", "WSA_SPK2 OUT",
-			"IN1_HPHL", "HPHL_OUT",
-			"IN2_HPHR", "HPHR_OUT",
-			"AMIC1", "MIC BIAS1",
-			"AMIC2", "MIC BIAS2",
-			"AMIC3", "MIC BIAS3",
-			"AMIC4", "MIC BIAS3",
-			"AMIC5", "MIC BIAS4",
-			"VA DMIC0", "MIC BIAS3",
-			"VA DMIC1", "MIC BIAS3",
-			"VA DMIC2", "MIC BIAS1",
-			"VA DMIC3", "MIC BIAS1",
-			"TX DMIC0", "MIC BIAS3",
-			"TX DMIC1", "MIC BIAS3",
-			"TX DMIC2", "MIC BIAS1",
-			"TX DMIC3", "MIC BIAS1",
-			"TX SWR_INPUT0", "ADC1_OUTPUT",
-			"TX SWR_INPUT1", "ADC2_OUTPUT",
-			"TX SWR_INPUT2", "ADC3_OUTPUT",
-			"TX SWR_INPUT3", "ADC4_OUTPUT";
+	audio-routing = "AMIC1", "Analog Mic1",
+		"AMIC1", "MIC BIAS1",
+		"AMIC2", "Analog Mic2",
+		"AMIC2", "MIC BIAS2",
+		"AMIC3", "Analog Mic3",
+		"AMIC3", "MIC BIAS3",
+		"AMIC4", "Analog Mic4",
+		"AMIC4", "MIC BIAS3",
+		"AMIC5", "Analog Mic5",
+		"AMIC5", "MIC BIAS4",
+		"VA AMIC1", "Analog Mic1",
+		"VA AMIC1", "VA MIC BIAS1",
+		"VA AMIC2", "Analog Mic2",
+		"VA AMIC2", "VA MIC BIAS2",
+		"VA AMIC3", "Analog Mic3",
+		"VA AMIC3", "VA MIC BIAS3",
+		"VA AMIC4", "Analog Mic4",
+		"VA AMIC4", "VA MIC BIAS3",
+		"VA AMIC5", "Analog Mic5",
+		"VA AMIC5", "VA MIC BIAS4",
+		"TX DMIC0", "Digital Mic0",
+		"Digital Mic0", "MIC BIAS3",
+		"TX DMIC1", "Digital Mic1",
+		"Digital Mic1", "MIC BIAS3",
+		"TX DMIC2", "Digital Mic2",
+		"Digital Mic2", "MIC BIAS1",
+		"TX DMIC3", "Digital Mic3",
+		"Digital Mic3", "MIC BIAS1",
+		"IN1_HPHL", "HPHL_OUT",
+		"IN2_HPHR", "HPHR_OUT",
+		"IN3_AUX", "AUX_OUT",
+		"RX_TX DEC0_INP", "TX DEC0 MUX",
+		"RX_TX DEC1_INP", "TX DEC1 MUX",
+		"RX_TX DEC2_INP", "TX DEC2 MUX",
+		"RX_TX DEC3_INP", "TX DEC3 MUX",
+		"TX SWR_INPUT", "WCD_TX_OUTPUT",
+		"VA SWR_INPUT", "VA_SWR_CLK",
+		"VA SWR_INPUT", "WCD_TX_OUTPUT",
+		"VA_AIF1 CAP", "VA_SWR_CLK",
+		"VA_AIF2 CAP", "VA_SWR_CLK",
+		"VA_AIF3 CAP", "VA_SWR_CLK",
+		"VA DMIC0", "Digital Mic0",
+		"VA DMIC1", "Digital Mic1",
+		"VA DMIC2", "Digital Mic2",
+		"VA DMIC3", "Digital Mic3",
+		"Digital Mic0", "VA MIC BIAS3",
+		"Digital Mic1", "VA MIC BIAS3",
+		"Digital Mic2", "VA MIC BIAS1",
+		"Digital Mic3", "VA MIC BIAS1";
 	*/
 
 	wcd-playback-dai-link {
@@ -961,23 +1072,21 @@
 		};
 	};
 
-	/*
-	wsa-dai-link {
-		link-name = "WSA Playback";
+	speaker-playback-dai-link {
+		link-name = "Primary Spkr Playback";
 
 		cpu {
-			sound-dai = <&q6apmbedai WSA_CODEC_DMA_RX_0>;
+			sound-dai = <&q6apmbedai TERTIARY_TDM_RX_0>;
 		};
 
 		codec {
-			sound-dai = <&cs35l41_t>, <&cs35l41_b>, <&wsamacro 0>; //, <&swr0 0>, <&wsamacro 0>;
+			sound-dai = <&cs35l41_t 0>, <&cs35l41_b 0>;
 		};
 
 		platform {
 			sound-dai = <&q6apm>;
 		};
 	};
-	*/
 
 	va-dai-link {
 		link-name = "VA Capture";
