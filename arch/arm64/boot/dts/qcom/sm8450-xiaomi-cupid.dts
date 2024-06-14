@@ -587,11 +587,9 @@
 		orientation-switch;
 
 		port {
-			/*
 			fsa4480_sbu_mux: endpoint {
 				remote-endpoint = <&pmic_glink_sbu>;
 			};
-			*/
 		};
 	};
 

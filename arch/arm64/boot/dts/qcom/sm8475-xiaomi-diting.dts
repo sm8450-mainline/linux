@@ -34,6 +34,17 @@
 		ranges;
 
 		bootargs = "PMOS_NOSPLASH console=tty0";
+
+		framebuffer: framebuffer@b8000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			width = <1220>;
+			height = <2712>;
+			stride = <(1220 * 4)>;
+			format = "a8r8g8b8";
+
+			clocks = <&gcc GCC_DISP_HF_AXI_CLK>;
+		};
 	};
 
 	reserved-memory {
@@ -69,6 +80,11 @@
 
 			qcom,client-id = <1>;
 			qcom,vmid = <QCOM_SCM_VMID_MSS_MSA>;
+		};
+
+		splash_region@b8000000 {
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			no-map;
 		};
 	};
 
@@ -486,27 +502,27 @@
 	/* wl2866d@28 xiaomi,wl2866d */
 };
 
-&i2c9 {
-	clock-frequency = <1000000>;
-	status = "okay";
+//&i2c9 {
+//	clock-frequency = <1000000>;
+//	status = "okay";
+//
+//	/* nq@28 qcom,sn-nci */
+//};
 
-	/* nq@28 qcom,sn-nci */
-};
+//&spi13 {
+//	clock-frequency = <50000000>;
+//	status = "okay";
+//
+//	/* ir-spi@0 ir-spi */
+//};
 
-&spi13 {
-	clock-frequency = <50000000>;
-	status = "okay";
-
-	/* ir-spi@0 ir-spi */
-};
-
-&i2c15 {
-	clock-frequency = <1000000>;
-	status = "okay";
-
-	/* cs35l41@40 cirrus,cs35l41 */
-	/* cs35l41@42 cirrus,cs35l41 */
-};
+//&i2c15 {
+//	clock-frequency = <1000000>;
+//	status = "okay";
+//
+//	/* cs35l41@40 cirrus,cs35l41 */
+//	/* cs35l41@42 cirrus,cs35l41 */
+//};
 
 &pm8350c_gpios {
 	eusb2_reset_ctrl_default: eusb2_reset_ctrl_default {
@@ -533,7 +549,8 @@
 };
 
 &tlmm {
-	gpio-reserved-ranges = <28 4>, <36 4>;
+	status = "disabled";
+	//gpio-reserved-ranges = <28 4>, <36 4>;
 };
 
 /*
