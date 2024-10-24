@@ -153,3 +153,12 @@ asymmetric system, a broken guest at EL1 could still attempt to execute
 mode will return to host userspace with an ``exit_reason`` of
 ``KVM_EXIT_FAIL_ENTRY`` and will remain non-runnable until successfully
 re-initialised by a subsequent ``KVM_ARM_VCPU_INIT`` operation.
+
+NOHZ FULL
+---------
+
+Nohz full CPUs are not a desirable fallback target to run 32bits el0
+applications. If present, a set of housekeeping CPUs that can do
+the job instead is preferred. Otherwise 32-bit EL0 is not supported.
+Should the need arise, appropriate support can be introduced in the
+future.
