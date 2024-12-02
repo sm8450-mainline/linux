@@ -1114,8 +1114,10 @@ reread:
 				       (printbuf_reset(&err),
 					prt_str(&err, "journal "),
 					bch2_csum_err_msg(&err, csum_type, j->csum, csum),
-					err.buf)))
+					err.buf))) {
 			saw_bad = true;
+			bch2_fatal_error(c);
+		}
 
 		ret = bch2_encrypt(c, JSET_CSUM_TYPE(j), journal_nonce(j),
 			     j->encrypted_start,
