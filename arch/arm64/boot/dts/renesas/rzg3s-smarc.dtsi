@@ -12,8 +12,13 @@
 / {
 	aliases {
 		i2c0 = &i2c0;
-		serial0 = &scif0;
+		serial3 = &scif0;
 		mmc1 = &sdhi1;
+	};
+
+	chosen {
+		bootargs = "ignore_loglevel";
+		stdout-path = "serial3:115200n8";
 	};
 
 	keys {
@@ -68,6 +73,19 @@
 	status = "okay";
 
 	clock-frequency = <1000000>;
+};
+
+&i2c1 {
+	status = "okay";
+
+	clock-frequency = <400000>;
+
+	power-monitor@44 {
+		compatible = "renesas,isl28022";
+		reg = <0x44>;
+		shunt-resistor-micro-ohms = <8000>;
+		renesas,average-samples = <32>;
+	};
 };
 
 &pinctrl {
