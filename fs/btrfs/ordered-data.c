@@ -194,6 +194,14 @@ static struct btrfs_ordered_extent *alloc_ordered_extent(
 	INIT_LIST_HEAD(&entry->bioc_list);
 	init_completion(&entry->completion);
 
+#ifdef CONFIG_BTRFS_DEBUG
+	entry->finished_bitmap = bitmap_zalloc(
+		num_bytes >> inode->root->fs_info->sectorsize_bits, GFP_NOFS);
+	if (!entry->finished_bitmap) {
+		kmem_cache_free(btrfs_ordered_extent_cache, entry);
+		return ERR_PTR(-ENOMEM);
+	}
+#endif
 	/*
 	 * We don't need the count_max_extents here, we can assume that all of
 	 * that work has been done at higher layers, so this is truly the
@@ -356,13 +364,39 @@ static bool can_finish_ordered_extent(struct btrfs_ordered_extent *ordered,
 		btrfs_folio_clear_ordered(fs_info, folio, file_offset, len);
 	}
 
+#ifdef CONFIG_BTRFS_DEBUG
+	{
+		unsigned long start_bit;
+		unsigned long nbits;
+		unsigned long nr_set;
+
+		ASSERT(file_offset >= ordered->file_offset);
+		ASSERT(file_offset + len <= ordered->file_offset  + ordered->num_bytes);
+
+		start_bit = (file_offset - ordered->file_offset) >> fs_info->sectorsize_bits;
+		nbits = len >> fs_info->sectorsize_bits;
+
+		nr_set = bitmap_count_set(ordered->finished_bitmap, start_bit, nbits);
+		if (WARN_ON(nr_set)) {
+			btrfs_crit(fs_info,
+"double ordered extent accounting, root=%llu ino=%llu OE offset=%llu OE len=%llu range offset=%llu range len=%llu already finished len=%lu finish_bitmap=%*pbl",
+				   btrfs_root_id(inode->root), btrfs_ino(inode),
+				   ordered->file_offset, ordered->num_bytes,
+				   file_offset, len, nr_set << fs_info->sectorsize_bits,
+				   (int)(ordered->num_bytes >> fs_info->sectorsize_bits),
+				   ordered->finished_bitmap);
+		}
+		bitmap_set(ordered->finished_bitmap, start_bit, nbits);
+		len -= (nr_set << fs_info->sectorsize_bits);
+	}
+#endif
 	/* Now we're fine to update the accounting. */
 	if (WARN_ON_ONCE(len > ordered->bytes_left)) {
 		btrfs_crit(fs_info,
-"bad ordered extent accounting, root=%llu ino=%llu OE offset=%llu OE len=%llu to_dec=%llu left=%llu",
+"bad ordered extent accounting, root=%llu ino=%llu OE offset=%llu OE len=%llu range start=%llu range len=%llu left=%llu",
 			   btrfs_root_id(inode->root), btrfs_ino(inode),
 			   ordered->file_offset, ordered->num_bytes,
-			   len, ordered->bytes_left);
+			   file_offset, len, ordered->bytes_left);
 		ordered->bytes_left = 0;
 	} else {
 		ordered->bytes_left -= len;
@@ -379,6 +413,28 @@ static bool can_finish_ordered_extent(struct btrfs_ordered_extent *ordered,
 	 * the finish_func to be executed.
 	 */
 	set_bit(BTRFS_ORDERED_IO_DONE, &ordered->flags);
+
+#ifdef CONFIG_BTRFS_DEBUG
+	{
+		u64 real_len;
+
+		if (test_bit(BTRFS_ORDERED_TRUNCATED, &ordered->flags))
+			real_len = ordered->truncated_len;
+		else
+			real_len = ordered->num_bytes;
+
+		if (WARN_ON(!bitmap_full(ordered->finished_bitmap,
+				 real_len >> fs_info->sectorsize_bits))) {
+			btrfs_crit(fs_info,
+"ordered extent finished bitmap desync, root=%llu ino=%llu OE offset=%llu OE len=%llu bytes_left=%llu bitmap=%*pbl",
+				btrfs_root_id(inode->root), btrfs_ino(inode),
+				ordered->file_offset, ordered->num_bytes,
+				ordered->bytes_left,
+				(int)(real_len >> fs_info->sectorsize_bits),
+				ordered->finished_bitmap);
+		}
+	}
+#endif
 	cond_wake_up(&ordered->wait);
 	refcount_inc(&ordered->refs);
 	trace_btrfs_ordered_extent_mark_finished(inode, ordered);
@@ -624,6 +680,9 @@ void btrfs_put_ordered_extent(struct btrfs_ordered_extent *entry)
 			list_del(&sum->list);
 			kvfree(sum);
 		}
+#ifdef CONFIG_BTRFS_DEBUG
+		bitmap_free(entry->finished_bitmap);
+#endif
 		kmem_cache_free(btrfs_ordered_extent_cache, entry);
 	}
 }
