@@ -741,12 +741,23 @@ int btrfs_check_zoned_mode(struct btrfs_fs_info *fs_info)
 	 * we add the pages one by one to a bio, and cannot increase the
 	 * metadata reservation even if it increases the number of extents, it
 	 * is safe to stick with the limit.
+	 *
+	 * If there is no zoned device in the filesystem, we have
+	 * max_zone_append_sectors = 0. That will cause
+	 * fs_info->max_zone_append_size and fs_info->max_extent_size to be
+	 * 0 in the following lines. Set the maximum value to avoid that.
 	 */
-	fs_info->max_zone_append_size = ALIGN_DOWN(
-		min3((u64)lim->max_zone_append_sectors << SECTOR_SHIFT,
-		     (u64)lim->max_sectors << SECTOR_SHIFT,
-		     (u64)lim->max_segments << PAGE_SHIFT),
-		fs_info->sectorsize);
+	if (lim->features & BLK_FEAT_ZONED)
+		fs_info->max_zone_append_size = ALIGN_DOWN(
+			min3((u64)lim->max_zone_append_sectors << SECTOR_SHIFT,
+			     (u64)lim->max_sectors << SECTOR_SHIFT,
+			     (u64)lim->max_segments << PAGE_SHIFT),
+			fs_info->sectorsize);
+	else
+		fs_info->max_zone_append_size = ALIGN_DOWN(
+			min((u64)lim->max_sectors << SECTOR_SHIFT,
+			    (u64)lim->max_segments << PAGE_SHIFT),
+			fs_info->sectorsize);
 	fs_info->fs_devices->chunk_alloc_policy = BTRFS_CHUNK_ALLOC_ZONED;
 	if (fs_info->max_zone_append_size < fs_info->max_extent_size)
 		fs_info->max_extent_size = fs_info->max_zone_append_size;
