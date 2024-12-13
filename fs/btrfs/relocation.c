@@ -2831,6 +2831,7 @@ static int relocate_one_folio(struct reloc_control *rc,
 	const bool use_rst = btrfs_need_stripe_tree_update(fs_info, rc->block_group->flags);
 
 	ASSERT(index <= last_index);
+again:
 	folio = filemap_lock_folio(inode->i_mapping, index);
 	if (IS_ERR(folio)) {
 
@@ -2865,6 +2866,11 @@ static int relocate_one_folio(struct reloc_control *rc,
 		if (!folio_test_uptodate(folio)) {
 			ret = -EIO;
 			goto release_folio;
+		}
+		if (folio->mapping != inode->i_mapping) {
+			folio_unlock(folio);
+			folio_put(folio);
+			goto again;
 		}
 	}
 
