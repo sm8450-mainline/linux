@@ -23,6 +23,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_clock.h>
 #include <linux/pm_domain.h>
+#include <linux/refcount.h>
 #include <linux/reset-controller.h>
 
 #include <dt-bindings/clock/renesas-cpg-mssr.h>
@@ -83,6 +84,12 @@ struct rzv2h_cpg_priv {
 
 #define rcdev_to_priv(x)	container_of(x, struct rzv2h_cpg_priv, rcdev)
 
+struct rzv2h_mstop {
+	u16 idx;
+	u16 mask;
+	refcount_t ref_cnt;
+};
+
 struct pll_clk {
 	struct rzv2h_cpg_priv *priv;
 	void __iomem *base;
@@ -97,6 +104,7 @@ struct pll_clk {
  * struct mod_clock - Module clock
  *
  * @priv: CPG private data
+ * @mstop: handle to cpg bus mstop data
  * @hw: handle between common and hardware-specific interfaces
  * @no_pm: flag to indicate PM is not supported
  * @on_index: register offset
@@ -106,6 +114,7 @@ struct pll_clk {
  */
 struct mod_clock {
 	struct rzv2h_cpg_priv *priv;
+	struct rzv2h_mstop *mstop;
 	struct clk_hw hw;
 	bool no_pm;
 	u8 on_index;
@@ -433,6 +442,37 @@ fail:
 		core->name, PTR_ERR(clk));
 }
 
+static void rzv2h_mod_clock_mstop_enable(struct rzv2h_cpg_priv *priv,
+					 struct mod_clock *clock)
+{
+	unsigned long flags;
+	u32 val;
+
+	spin_lock_irqsave(&priv->rmw_lock, flags);
+	if (!refcount_read(&clock->mstop->ref_cnt)) {
+		val = clock->mstop->mask << 16;
+		writel(val, priv->base + CPG_BUS_MSTOP(clock->mstop->idx));
+		refcount_set(&clock->mstop->ref_cnt, 1);
+	} else {
+		refcount_inc(&clock->mstop->ref_cnt);
+	}
+	spin_unlock_irqrestore(&priv->rmw_lock, flags);
+}
+
+static void rzv2h_mod_clock_mstop_disable(struct rzv2h_cpg_priv *priv,
+					  struct mod_clock *clock)
+{
+	unsigned long flags;
+	u32 val;
+
+	spin_lock_irqsave(&priv->rmw_lock, flags);
+	if (refcount_dec_and_test(&clock->mstop->ref_cnt)) {
+		val = clock->mstop->mask << 16 | clock->mstop->mask;
+		writel(val, priv->base + CPG_BUS_MSTOP(clock->mstop->idx));
+	}
+	spin_unlock_irqrestore(&priv->rmw_lock, flags);
+}
+
 static int rzv2h_mod_clock_endisable(struct clk_hw *hw, bool enable)
 {
 	struct mod_clock *clock = to_mod_clock(hw);
@@ -447,10 +487,16 @@ static int rzv2h_mod_clock_endisable(struct clk_hw *hw, bool enable)
 		enable ? "ON" : "OFF");
 
 	value = bitmask << 16;
-	if (enable)
+	if (enable) {
 		value |= bitmask;
-
-	writel(value, priv->base + reg);
+		writel(value, priv->base + reg);
+		if (clock->mstop)
+			rzv2h_mod_clock_mstop_enable(priv, clock);
+	} else {
+		if (clock->mstop)
+			rzv2h_mod_clock_mstop_disable(priv, clock);
+		writel(value, priv->base + reg);
+	}
 
 	if (!enable || clock->mon_index < 0)
 		return 0;
@@ -499,6 +545,45 @@ static const struct clk_ops rzv2h_mod_clock_ops = {
 	.disable = rzv2h_mod_clock_disable,
 	.is_enabled = rzv2h_mod_clock_is_enabled,
 };
+
+static struct rzv2h_mstop
+*rzv2h_cpg_get_mstop(struct rzv2h_cpg_priv *priv, struct mod_clock *clock, u32 mstop_data)
+{
+	struct rzv2h_mstop *mstop;
+	unsigned int i;
+
+	for (i = 0; i < priv->num_mod_clks; i++) {
+		struct mod_clock *clk;
+		struct clk_hw *hw;
+
+		if (priv->clks[priv->num_core_clks + i] == ERR_PTR(-ENOENT))
+			continue;
+
+		hw = __clk_get_hw(priv->clks[priv->num_core_clks + i]);
+		clk = to_mod_clock(hw);
+		if (!clk->mstop)
+			continue;
+
+		if (BUS_MSTOP(clk->mstop->idx, clk->mstop->mask) == mstop_data) {
+			if (rzv2h_mod_clock_is_enabled(&clock->hw))
+				refcount_inc(&clk->mstop->ref_cnt);
+			return clk->mstop;
+		}
+	}
+
+	mstop = devm_kzalloc(priv->dev, sizeof(*mstop), GFP_KERNEL);
+	if (!mstop)
+		return NULL;
+
+	mstop->idx = (mstop_data >> 16) & 0xffff;
+	mstop->mask = mstop_data & 0xffff;
+	if (rzv2h_mod_clock_is_enabled(&clock->hw))
+		refcount_set(&mstop->ref_cnt, 1);
+	else
+		refcount_set(&mstop->ref_cnt, 0);
+
+	return mstop;
+}
 
 static void __init
 rzv2h_cpg_register_mod_clk(const struct rzv2h_mod_clk *mod,
@@ -554,6 +639,14 @@ rzv2h_cpg_register_mod_clk(const struct rzv2h_mod_clk *mod,
 	}
 
 	priv->clks[id] = clock->hw.clk;
+
+	if (mod->mstop_data != BUS_MSTOP_NONE) {
+		clock->mstop = rzv2h_cpg_get_mstop(priv, clock, mod->mstop_data);
+		if (!clock->mstop) {
+			clk = ERR_PTR(-ENOMEM);
+			goto fail;
+		}
+	}
 
 	return;
 
