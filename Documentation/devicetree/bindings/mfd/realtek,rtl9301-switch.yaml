@@ -41,6 +41,9 @@ patternProperties:
   'i2c@[0-9a-f]+$':
     $ref: /schemas/i2c/realtek,rtl9301-i2c.yaml#
 
+  'mdio@[0-9a-f]+$':
+    $ref: /schemas/net/realtek,rtl9301-mdio.yaml#
+
 required:
   - compatible
   - reg
@@ -108,6 +111,18 @@ examples:
             #gpio-cells = <2>;
             reg = <0x20>;
           };
+        };
+      };
+
+      mdio0: mdio@ca00 {
+        compatible = "realtek,rtl9301-mdio";
+        reg = <0xca00 0x200>;
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        ethernet-phy@0 {
+          reg = <0>;
+          realtek,smi-address = <0 1>;
         };
       };
     };
