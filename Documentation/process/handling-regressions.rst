@@ -29,9 +29,9 @@ The important bits (aka "The TL;DR")
     * For mailed reports, check if the reporter included a line like ``#regzbot
       introduced: v5.13..v5.14-rc1``. If not, send a reply (with the regressions
       list in CC) containing a paragraph like the following, which tells regzbot
-      when the issue started to happen::
+      when the issue started to happen, preferably with a full git SHA::
 
-       #regzbot ^introduced: 1f2e3d4c5b6a
+       #regzbot ^introduced: 1f2e3d4c5b6a1524e886b7f1b8a0c1fc7321cac2
 
     * When forwarding reports from a bug tracker to the regressions list (see
       above), include a paragraph like the following::
