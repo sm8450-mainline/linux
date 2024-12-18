@@ -54,7 +54,7 @@ int btrfs_check_super_csum(struct btrfs_fs_info *fs_info,
 			   const struct btrfs_super_block *disk_sb);
 int __cold open_ctree(struct super_block *sb, struct btrfs_fs_devices *fs_devices);
 void __cold close_ctree(struct btrfs_fs_info *fs_info);
-int btrfs_validate_super(const struct btrfs_fs_info *fs_info,
+int btrfs_validate_super(struct btrfs_fs_info *fs_info,
 			 const struct btrfs_super_block *sb, int mirror_num);
 int btrfs_check_features(struct btrfs_fs_info *fs_info, bool is_rw_mount);
 int write_all_supers(struct btrfs_fs_info *fs_info, int max_mirrors);
