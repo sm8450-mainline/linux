@@ -69,9 +69,7 @@ int bch2_create_trans(struct btree_trans *trans,
 		if (!snapshot_src.inum) {
 			/* Inode wasn't specified, just snapshot: */
 			struct bch_subvolume s;
-
-			ret = bch2_subvolume_get(trans, snapshot_src.subvol, true,
-						 BTREE_ITER_cached, &s);
+			ret = bch2_subvolume_get(trans, snapshot_src.subvol, true, &s);
 			if (ret)
 				goto err;
 
@@ -171,6 +169,10 @@ int bch2_create_trans(struct btree_trans *trans,
 		new_inode->bi_dir		= dir_u->bi_inum;
 		new_inode->bi_dir_offset	= dir_offset;
 	}
+
+	if (S_ISDIR(mode) &&
+	    !new_inode->bi_subvol)
+		new_inode->bi_depth = dir_u->bi_depth + 1;
 
 	inode_iter.flags &= ~BTREE_ITER_all_snapshots;
 	bch2_btree_iter_set_snapshot(&inode_iter, snapshot);
@@ -512,6 +514,15 @@ int bch2_rename_trans(struct btree_trans *trans,
 		dst_dir_u->bi_nlink++;
 	}
 
+	if (S_ISDIR(src_inode_u->bi_mode) &&
+	    !src_inode_u->bi_subvol)
+		src_inode_u->bi_depth = dst_dir_u->bi_depth + 1;
+
+	if (mode == BCH_RENAME_EXCHANGE &&
+	    S_ISDIR(dst_inode_u->bi_mode) &&
+	    !dst_inode_u->bi_subvol)
+		dst_inode_u->bi_depth = src_dir_u->bi_depth + 1;
+
 	if (dst_inum.inum && is_subdir_for_nlink(dst_inode_u)) {
 		dst_dir_u->bi_nlink--;
 		src_dir_u->bi_nlink += mode == BCH_RENAME_EXCHANGE;
@@ -546,5 +557,86 @@ err:
 	bch2_trans_iter_exit(trans, &src_inode_iter);
 	bch2_trans_iter_exit(trans, &dst_dir_iter);
 	bch2_trans_iter_exit(trans, &src_dir_iter);
+	return ret;
+}
+
+static inline void prt_bytes_reversed(struct printbuf *out, const void *b, unsigned n)
+{
+	bch2_printbuf_make_room(out, n);
+
+	unsigned can_print = min(n, printbuf_remaining(out));
+
+	b += n;
+
+	for (unsigned i = 0; i < can_print; i++)
+		out->buf[out->pos++] = *((char *) --b);
+
+	printbuf_nul_terminate(out);
+}
+
+static inline void reverse_bytes(void *b, size_t n)
+{
+	char *e = b + n, *s = b;
+
+	while (s < e) {
+		--e;
+		swap(*s, *e);
+		s++;
+	}
+}
+
+/* XXX: we don't yet attempt to print paths when we don't know the subvol */
+int bch2_inum_to_path(struct btree_trans *trans, subvol_inum inum, struct printbuf *path)
+{
+	unsigned orig_pos = path->pos;
+	int ret = 0;
+
+	while (!(inum.subvol == BCACHEFS_ROOT_SUBVOL &&
+		 inum.inum   == BCACHEFS_ROOT_INO)) {
+		struct bch_inode_unpacked inode;
+		ret = bch2_inode_find_by_inum_trans(trans, inum, &inode);
+		if (ret)
+			goto err;
+
+		if (!inode.bi_dir && !inode.bi_dir_offset) {
+			ret = -BCH_ERR_ENOENT_inode_no_backpointer;
+			goto err;
+		}
+
+		u32 snapshot;
+		ret = bch2_subvolume_get_snapshot(trans, inum.subvol, &snapshot);
+		if (ret)
+			goto err;
+
+		struct btree_iter d_iter;
+		struct bkey_s_c_dirent d = bch2_bkey_get_iter_typed(trans, &d_iter,
+				BTREE_ID_dirents, SPOS(inode.bi_dir, inode.bi_dir_offset, snapshot),
+				0, dirent);
+		ret = bkey_err(d.s_c);
+		if (ret)
+			goto err;
+
+		struct qstr dirent_name = bch2_dirent_get_name(d);
+		prt_bytes_reversed(path, dirent_name.name, dirent_name.len);
+
+		prt_char(path, '/');
+
+		if (d.v->d_type == DT_SUBVOL)
+			inum.subvol = le32_to_cpu(d.v->d_parent_subvol);
+		inum.inum = d.k->p.inode;
+
+		bch2_trans_iter_exit(trans, &d_iter);
+	}
+
+	if (orig_pos == path->pos)
+		prt_char(path, '/');
+
+	ret = path->allocation_failure ? -ENOMEM : 0;
+	if (ret)
+		goto err;
+
+	reverse_bytes(path->buf + orig_pos, path->pos - orig_pos);
+	return 0;
+err:
 	return ret;
 }
