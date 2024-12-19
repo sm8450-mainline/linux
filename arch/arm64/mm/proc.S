@@ -197,10 +197,8 @@ SYM_FUNC_ALIAS(__pi_idmap_cpu_replace_ttbr1, idmap_cpu_replace_ttbr1)
 
 	.macro	pte_to_phys, phys, pte
 	and	\phys, \pte, #PTE_ADDR_LOW
-#ifdef CONFIG_ARM64_PA_BITS_52
 	and	\pte, \pte, #PTE_ADDR_HIGH
 	orr	\phys, \phys, \pte, lsl #PTE_ADDR_HIGH_SHIFT
-#endif
 	.endm
 
 	.macro	kpti_mk_tbl_ng, type, num_entries
@@ -501,7 +499,7 @@ alternative_else_nop_endif
 #ifdef CONFIG_ARM64_HAFT
 	cmp	x9, ID_AA64MMFR1_EL1_HAFDBS_HAFT
 	b.lt	1f
-	orr	tcr2, tcr2, TCR2_EL1x_HAFT
+	orr	tcr2, tcr2, TCR2_EL1_HAFT
 #endif /* CONFIG_ARM64_HAFT */
 1:
 #endif	/* CONFIG_ARM64_HW_AFDBM */
@@ -532,7 +530,8 @@ alternative_else_nop_endif
 #undef PTE_MAYBE_NG
 #undef PTE_MAYBE_SHARED
 
-	orr	tcr2, tcr2, TCR2_EL1x_PIE
+	orr	tcr2, tcr2, TCR2_EL1_PIE
+	msr	REG_TCR2_EL1, x0
 
 .Lskip_indirection:
 
