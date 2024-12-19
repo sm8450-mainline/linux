@@ -36,6 +36,9 @@ int perf_ftrace__latency_prepare_bpf(struct perf_ftrace *ftrace)
 		return -1;
 	}
 
+	skel->rodata->bucket_range = ftrace->bucket_range;
+	skel->rodata->min_latency = ftrace->min_latency;
+
 	/* don't need to set cpu filter for system-wide mode */
 	if (ftrace->target.cpu_list) {
 		ncpus = perf_cpu_map__nr(ftrace->evlist->core.user_requested_cpus);

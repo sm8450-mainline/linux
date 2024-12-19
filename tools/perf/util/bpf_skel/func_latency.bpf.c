@@ -41,6 +41,9 @@ int enabled = 0;
 const volatile int has_cpu = 0;
 const volatile int has_task = 0;
 const volatile int use_nsec = 0;
+const volatile unsigned int bucket_range;
+const volatile unsigned int min_latency;
+const volatile unsigned int max_latency;
 
 SEC("kprobe/func")
 int BPF_PROG(func_begin)
@@ -92,7 +95,7 @@ int BPF_PROG(func_end)
 	start = bpf_map_lookup_elem(&functime, &tid);
 	if (start) {
 		__s64 delta = bpf_ktime_get_ns() - *start;
-		__u32 key;
+		__u32 key = 0;
 		__u64 *hist;
 
 		bpf_map_delete_elem(&functime, &tid);
@@ -100,12 +103,34 @@ int BPF_PROG(func_end)
 		if (delta < 0)
 			return 0;
 
+		if (bucket_range != 0) {
+			delta /= cmp_base;
+
+			if (min_latency > 0) {
+				if (delta > min_latency)
+					delta -= min_latency;
+				else
+					goto do_lookup;
+			}
+
+			// Less than 1 unit (ms or ns), or, in the future,
+			// than the min latency desired.
+			if (delta > 0) { // 1st entry: [ 1 unit .. bucket_range units )
+				// clang 12 doesn't like s64 / u32 division
+				key = (__u64)delta / bucket_range + 1;
+				if (key >= NUM_BUCKET ||
+					delta >= max_latency - min_latency)
+					key = NUM_BUCKET - 1;
+			}
+			goto do_lookup;
+		}
 		// calculate index using delta
 		for (key = 0; key < (NUM_BUCKET - 1); key++) {
 			if (delta < (cmp_base << key))
 				break;
 		}
 
+do_lookup:
 		hist = bpf_map_lookup_elem(&latency, &key);
 		if (!hist)
 			return 0;
