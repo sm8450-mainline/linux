@@ -2205,9 +2205,9 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 	 */
 	preferred_gfp = gfp | __GFP_NOWARN;
 	preferred_gfp &= ~(__GFP_DIRECT_RECLAIM | __GFP_NOFAIL);
-	page = __alloc_pages_noprof(preferred_gfp, order, nid, nodemask);
+	page = __alloc_frozen_pages_noprof(preferred_gfp, order, nid, nodemask);
 	if (!page)
-		page = __alloc_pages_noprof(gfp, order, nid, NULL);
+		page = __alloc_frozen_pages_noprof(gfp, order, nid, NULL);
 
 	return page;
 }
@@ -2222,7 +2222,7 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
  *
  * Return: The page on success or NULL if allocation fails.
  */
-struct page *alloc_pages_mpol_noprof(gfp_t gfp, unsigned int order,
+static struct page *alloc_pages_mpol(gfp_t gfp, unsigned int order,
 		struct mempolicy *pol, pgoff_t ilx, int nid)
 {
 	nodemask_t *nodemask;
@@ -2253,8 +2253,9 @@ struct page *alloc_pages_mpol_noprof(gfp_t gfp, unsigned int order,
 			 * First, try to allocate THP only on local node, but
 			 * don't reclaim unnecessarily, just compact.
 			 */
-			page = __alloc_pages_node_noprof(nid,
-				gfp | __GFP_THISNODE | __GFP_NORETRY, order);
+			page = __alloc_frozen_pages_noprof(
+				gfp | __GFP_THISNODE | __GFP_NORETRY, order,
+				nid, NULL);
 			if (page || !(gfp & __GFP_DIRECT_RECLAIM))
 				return page;
 			/*
@@ -2266,7 +2267,7 @@ struct page *alloc_pages_mpol_noprof(gfp_t gfp, unsigned int order,
 		}
 	}
 
-	page = __alloc_pages_noprof(gfp, order, nid, nodemask);
+	page = __alloc_frozen_pages_noprof(gfp, order, nid, nodemask);
 
 	if (unlikely(pol->mode == MPOL_INTERLEAVE) && page) {
 		/* skip NUMA_INTERLEAVE_HIT update if numa stats is disabled */
@@ -2284,8 +2285,13 @@ struct page *alloc_pages_mpol_noprof(gfp_t gfp, unsigned int order,
 struct folio *folio_alloc_mpol_noprof(gfp_t gfp, unsigned int order,
 		struct mempolicy *pol, pgoff_t ilx, int nid)
 {
-	return page_rmappable_folio(alloc_pages_mpol_noprof(gfp | __GFP_COMP,
-							order, pol, ilx, nid));
+	struct page *page = alloc_pages_mpol(gfp | __GFP_COMP, order, pol,
+			ilx, nid);
+	if (!page)
+		return NULL;
+
+	set_page_refcounted(page);
+	return page_rmappable_folio(page);
 }
 
 /**
@@ -2299,7 +2305,7 @@ struct folio *folio_alloc_mpol_noprof(gfp_t gfp, unsigned int order,
  * NUMA policy.  The caller must hold the mmap_lock of the mm_struct of the
  * VMA to prevent it from going away.  Should be used for all allocations
  * for folios that will be mapped into user space, excepting hugetlbfs, and
- * excepting where direct use of alloc_pages_mpol() is more appropriate.
+ * excepting where direct use of folio_alloc_mpol() is more appropriate.
  *
  * Return: The folio on success or NULL if allocation fails.
  */
@@ -2320,6 +2326,21 @@ struct folio *vma_alloc_folio_noprof(gfp_t gfp, int order, struct vm_area_struct
 }
 EXPORT_SYMBOL(vma_alloc_folio_noprof);
 
+struct page *alloc_frozen_pages_noprof(gfp_t gfp, unsigned order)
+{
+	struct mempolicy *pol = &default_policy;
+
+	/*
+	 * No reference counting needed for current->mempolicy
+	 * nor system default_policy
+	 */
+	if (!in_interrupt() && !(gfp & __GFP_THISNODE))
+		pol = get_task_policy(current);
+
+	return alloc_pages_mpol(gfp, order, pol, NO_INTERLEAVE_INDEX,
+				       numa_node_id());
+}
+
 /**
  * alloc_pages - Allocate pages.
  * @gfp: GFP flags.
@@ -2336,17 +2357,11 @@ EXPORT_SYMBOL(vma_alloc_folio_noprof);
  */
 struct page *alloc_pages_noprof(gfp_t gfp, unsigned int order)
 {
-	struct mempolicy *pol = &default_policy;
+	struct page *page = alloc_frozen_pages_noprof(gfp, order);
 
-	/*
-	 * No reference counting needed for current->mempolicy
-	 * nor system default_policy
-	 */
-	if (!in_interrupt() && !(gfp & __GFP_THISNODE))
-		pol = get_task_policy(current);
-
-	return alloc_pages_mpol_noprof(gfp, order, pol, NO_INTERLEAVE_INDEX,
-				       numa_node_id());
+	if (page)
+		set_page_refcounted(page);
+	return page;
 }
 EXPORT_SYMBOL(alloc_pages_noprof);
 

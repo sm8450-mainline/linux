@@ -68,20 +68,12 @@ bool isolate_movable_page(struct page *page, isolate_mode_t mode)
 	if (!folio)
 		goto out;
 
-	if (unlikely(folio_test_slab(folio)))
-		goto out_putfolio;
-	/* Pairs with smp_wmb() in slab freeing, e.g. SLUB's __free_slab() */
-	smp_rmb();
 	/*
 	 * Check movable flag before taking the page lock because
 	 * we use non-atomic bitops on newly allocated page flags so
 	 * unconditionally grabbing the lock ruins page's owner side.
 	 */
 	if (unlikely(!__folio_test_movable(folio)))
-		goto out_putfolio;
-	/* Pairs with smp_wmb() in slab allocation, e.g. SLUB's alloc_slab_page() */
-	smp_rmb();
-	if (unlikely(folio_test_slab(folio)))
 		goto out_putfolio;
 
 	/*
@@ -1262,7 +1254,10 @@ static int migrate_folio_unmap(new_folio_t get_new_folio,
 		 */
 		switch (mode) {
 		case MIGRATE_SYNC:
-			break;
+			if (!src->mapping ||
+			    !mapping_writeback_indeterminate(src->mapping))
+				break;
+			fallthrough;
 		default:
 			rc = -EBUSY;
 			goto out;
@@ -2683,8 +2678,7 @@ int migrate_misplaced_folio_prepare(struct folio *folio,
  * elevated reference count on the folio. This function will un-isolate the
  * folio, dereferencing the folio before returning.
  */
-int migrate_misplaced_folio(struct folio *folio, struct vm_area_struct *vma,
-			    int node)
+int migrate_misplaced_folio(struct folio *folio, int node)
 {
 	pg_data_t *pgdat = NODE_DATA(node);
 	int nr_remaining;

@@ -27,6 +27,15 @@
 #include <linux/rbtree.h>
 #include <linux/rwsem.h>
 
+extern unsigned long stack_guard_gap;
+#ifdef CONFIG_MMU
+extern unsigned long mmap_min_addr;
+extern unsigned long dac_mmap_min_addr;
+#else
+#define mmap_min_addr		0UL
+#define dac_mmap_min_addr	0UL
+#endif
+
 #define VM_WARN_ON(_expr) (WARN_ON(_expr))
 #define VM_WARN_ON_ONCE(_expr) (WARN_ON_ONCE(_expr))
 #define VM_BUG_ON(_expr) (BUG_ON(_expr))
@@ -39,6 +48,7 @@
 #define VM_SHARED	0x00000008
 #define VM_MAYREAD	0x00000010
 #define VM_MAYWRITE	0x00000020
+#define VM_MAYEXEC	0x00000040
 #define VM_GROWSDOWN	0x00000100
 #define VM_PFNMAP	0x00000400
 #define VM_LOCKED	0x00002000
@@ -51,12 +61,28 @@
 #define VM_STACK	VM_GROWSDOWN
 #define VM_SHADOW_STACK	VM_NONE
 #define VM_SOFTDIRTY	0
+#define VM_ARCH_1	0x01000000	/* Architecture-specific flag */
+#define VM_GROWSUP	VM_NONE
 
 #define VM_ACCESS_FLAGS (VM_READ | VM_WRITE | VM_EXEC)
 #define VM_SPECIAL (VM_IO | VM_DONTEXPAND | VM_PFNMAP | VM_MIXEDMAP)
 
 /* This mask represents all the VMA flag bits used by mlock */
 #define VM_LOCKED_MASK	(VM_LOCKED | VM_LOCKONFAULT)
+
+#define TASK_EXEC ((current->personality & READ_IMPLIES_EXEC) ? VM_EXEC : 0)
+
+#define VM_DATA_FLAGS_TSK_EXEC	(VM_READ | VM_WRITE | TASK_EXEC | \
+				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
+
+#define VM_DATA_DEFAULT_FLAGS	VM_DATA_FLAGS_TSK_EXEC
+
+#define VM_STARTGAP_FLAGS (VM_GROWSDOWN | VM_SHADOW_STACK)
+
+#define RLIMIT_STACK		3	/* max stack size */
+#define RLIMIT_MEMLOCK		8	/* max locked-in-memory address space */
+
+#define CAP_IPC_LOCK         14
 
 #ifdef CONFIG_64BIT
 /* VM is sealed, in vm_flags */
@@ -122,10 +148,22 @@ enum {
 	TASK_COMM_LEN = 16,
 };
 
+/*
+ * Flags for bug emulation.
+ *
+ * These occupy the top three bytes.
+ */
+enum {
+	READ_IMPLIES_EXEC =	0x0400000,
+};
+
 struct task_struct {
 	char comm[TASK_COMM_LEN];
 	pid_t pid;
 	struct mm_struct *mm;
+
+	/* Used for emulating ABI behavior of previous Linux versions: */
+	unsigned int			personality;
 };
 
 struct task_struct *get_current(void);
@@ -186,6 +224,8 @@ struct mm_struct {
 	unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
 	unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */
 	unsigned long stack_vm;	   /* VM_STACK */
+
+	unsigned long def_flags;
 };
 
 struct vma_lock {
@@ -241,7 +281,7 @@ struct vm_area_struct {
 	 * counter reuse can only lead to occasional unnecessary use of the
 	 * slowpath.
 	 */
-	int vm_lock_seq;
+	unsigned int vm_lock_seq;
 	struct vma_lock *vm_lock;
 #endif
 
@@ -373,6 +413,17 @@ struct vm_operations_struct {
 					  unsigned long addr);
 };
 
+struct vm_unmapped_area_info {
+#define VM_UNMAPPED_AREA_TOPDOWN 1
+	unsigned long flags;
+	unsigned long length;
+	unsigned long low_limit;
+	unsigned long high_limit;
+	unsigned long align_mask;
+	unsigned long align_offset;
+	unsigned long start_gap;
+};
+
 static inline void vma_iter_invalidate(struct vma_iterator *vmi)
 {
 	mas_pause(&vmi->mas);
@@ -416,7 +467,7 @@ static inline bool vma_lock_alloc(struct vm_area_struct *vma)
 		return false;
 
 	init_rwsem(&vma->vm_lock->lock);
-	vma->vm_lock_seq = -1;
+	vma->vm_lock_seq = UINT_MAX;
 
 	return true;
 }
@@ -431,6 +482,8 @@ static inline void vma_mark_detached(struct vm_area_struct *vma, bool detached)
 }
 
 extern const struct vm_operations_struct vma_dummy_vm_ops;
+
+extern unsigned long rlimit(unsigned int limit);
 
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
@@ -853,6 +906,11 @@ static inline void mmap_write_unlock(struct mm_struct *)
 {
 }
 
+static inline int mmap_write_lock_killable(struct mm_struct *)
+{
+	return 0;
+}
+
 static inline bool can_modify_mm(struct mm_struct *mm,
 				 unsigned long start,
 				 unsigned long end)
@@ -938,7 +996,7 @@ static inline bool is_file_hugepages(struct file *)
 
 static inline int security_vm_enough_memory_mm(struct mm_struct *, long)
 {
-	return true;
+	return 0;
 }
 
 static inline bool may_expand_vm(struct mm_struct *, vm_flags_t, unsigned long)
@@ -1031,6 +1089,100 @@ static inline void vma_close(struct vm_area_struct *)
 static inline int mmap_file(struct file *, struct vm_area_struct *)
 {
 	return 0;
+}
+
+static inline unsigned long stack_guard_start_gap(struct vm_area_struct *vma)
+{
+	if (vma->vm_flags & VM_GROWSDOWN)
+		return stack_guard_gap;
+
+	/* See reasoning around the VM_SHADOW_STACK definition */
+	if (vma->vm_flags & VM_SHADOW_STACK)
+		return PAGE_SIZE;
+
+	return 0;
+}
+
+static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
+{
+	unsigned long gap = stack_guard_start_gap(vma);
+	unsigned long vm_start = vma->vm_start;
+
+	vm_start -= gap;
+	if (vm_start > vma->vm_start)
+		vm_start = 0;
+	return vm_start;
+}
+
+static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
+{
+	unsigned long vm_end = vma->vm_end;
+
+	if (vma->vm_flags & VM_GROWSUP) {
+		vm_end += stack_guard_gap;
+		if (vm_end < vma->vm_end)
+			vm_end = -PAGE_SIZE;
+	}
+	return vm_end;
+}
+
+static inline int is_hugepage_only_range(struct mm_struct *mm,
+					unsigned long addr, unsigned long len)
+{
+	return 0;
+}
+
+static inline bool vma_is_accessible(struct vm_area_struct *vma)
+{
+	return vma->vm_flags & VM_ACCESS_FLAGS;
+}
+
+static inline bool capable(int cap)
+{
+	return true;
+}
+
+static inline bool mlock_future_ok(struct mm_struct *mm, unsigned long flags,
+			unsigned long bytes)
+{
+	unsigned long locked_pages, limit_pages;
+
+	if (!(flags & VM_LOCKED) || capable(CAP_IPC_LOCK))
+		return true;
+
+	locked_pages = bytes >> PAGE_SHIFT;
+	locked_pages += mm->locked_vm;
+
+	limit_pages = rlimit(RLIMIT_MEMLOCK);
+	limit_pages >>= PAGE_SHIFT;
+
+	return locked_pages <= limit_pages;
+}
+
+static inline int __anon_vma_prepare(struct vm_area_struct *vma)
+{
+	struct anon_vma *anon_vma = calloc(1, sizeof(struct anon_vma));
+
+	if (!anon_vma)
+		return -ENOMEM;
+
+	anon_vma->root = anon_vma;
+	vma->anon_vma = anon_vma;
+
+	return 0;
+}
+
+static inline int anon_vma_prepare(struct vm_area_struct *vma)
+{
+	if (likely(vma->anon_vma))
+		return 0;
+
+	return __anon_vma_prepare(vma);
+}
+
+static inline void userfaultfd_unmap_complete(struct mm_struct *mm,
+					      struct list_head *uf)
+{
 }
 
 #endif	/* __MM_VMA_INTERNAL_H */

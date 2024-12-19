@@ -234,8 +234,15 @@ static inline bool page_ref_add_unless(struct page *page, int nr, int u)
 
 	rcu_read_lock();
 	/* avoid writing to the vmemmap area being remapped */
-	if (!page_is_fake_head(page) && page_ref_count(page) != u)
+	if (!page_is_fake_head(page)) {
+		/*
+		 * atomic_add_unless() will currently never modify the value
+		 * if it already is u. If that ever changes, we'd have to have
+		 * a separate check here, such that we won't be writing to
+		 * write-protected vmemmap areas.
+		 */
 		ret = atomic_add_unless(&page->_refcount, nr, u);
+	}
 	rcu_read_unlock();
 
 	if (page_ref_tracepoint_active(page_ref_mod_unless))

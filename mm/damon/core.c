@@ -1542,7 +1542,7 @@ static unsigned long damos_quota_score(struct damos_quota *quota)
 static void damos_set_effective_quota(struct damos_quota *quota)
 {
 	unsigned long throughput;
-	unsigned long esz;
+	unsigned long esz = ULONG_MAX;
 
 	if (!quota->ms && list_empty(&quota->goals)) {
 		quota->esz = quota->sz;
@@ -1564,10 +1564,7 @@ static void damos_set_effective_quota(struct damos_quota *quota)
 				quota->total_charged_ns;
 		else
 			throughput = PAGE_SIZE * 1024;
-		if (!list_empty(&quota->goals))
-			esz = min(throughput * quota->ms, esz);
-		else
-			esz = throughput * quota->ms;
+		esz = min(throughput * quota->ms, esz);
 	}
 
 	if (quota->sz && quota->sz < esz)

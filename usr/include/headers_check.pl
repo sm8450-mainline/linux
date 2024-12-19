@@ -55,10 +55,6 @@ sub check_include
 		my $found;
 		$found = stat($dir . "/" . $inc);
 		if (!$found) {
-			$inc =~ s#asm/#asm-$arch/#;
-			$found = stat($dir . "/" . $inc);
-		}
-		if (!$found) {
 			printf STDERR "$filename:$lineno: included file '$inc' is not exported\n";
 			$ret = 1;
 		}

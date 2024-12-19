@@ -553,38 +553,105 @@ static bool shmem_confirm_swap(struct address_space *mapping,
 /* ifdef here to avoid bloating shmem.o when not necessary */
 
 static int shmem_huge __read_mostly = SHMEM_HUGE_NEVER;
+static int tmpfs_huge __read_mostly = SHMEM_HUGE_NEVER;
 
-static bool shmem_huge_global_enabled(struct inode *inode, pgoff_t index,
-				      loff_t write_end, bool shmem_huge_force,
-				      unsigned long vm_flags)
+/**
+ * shmem_mapping_size_orders - Get allowable folio orders for the given file size.
+ * @mapping: Target address_space.
+ * @index: The page index.
+ * @write_end: end of a write, could extend inode size.
+ *
+ * This returns huge orders for folios (when supported) based on the file size
+ * which the mapping currently allows at the given index. The index is relevant
+ * due to alignment considerations the mapping might have. The returned order
+ * may be less than the size passed.
+ *
+ * Return: The orders.
+ */
+static inline unsigned int
+shmem_mapping_size_orders(struct address_space *mapping, pgoff_t index, loff_t write_end)
 {
+	unsigned int order;
+	size_t size;
+
+	if (!mapping_large_folio_support(mapping) || !write_end)
+		return 0;
+
+	/* Calculate the write size based on the write_end */
+	size = write_end - (index << PAGE_SHIFT);
+	order = filemap_get_order(size);
+	if (!order)
+		return 0;
+
+	/* If we're not aligned, allocate a smaller folio */
+	if (index & ((1UL << order) - 1))
+		order = __ffs(index);
+
+	order = min_t(size_t, order, MAX_PAGECACHE_ORDER);
+	return order > 0 ? BIT(order + 1) - 1 : 0;
+}
+
+static unsigned int shmem_huge_global_enabled(struct inode *inode, pgoff_t index,
+					      loff_t write_end, bool shmem_huge_force,
+					      struct vm_area_struct *vma,
+					      unsigned long vm_flags)
+{
+	unsigned int maybe_pmd_order = HPAGE_PMD_ORDER > MAX_PAGECACHE_ORDER ?
+		0 : BIT(HPAGE_PMD_ORDER);
+	unsigned long within_size_orders;
+	unsigned int order;
+	pgoff_t aligned_index;
 	loff_t i_size;
 
-	if (HPAGE_PMD_ORDER > MAX_PAGECACHE_ORDER)
-		return false;
 	if (!S_ISREG(inode->i_mode))
-		return false;
+		return 0;
 	if (shmem_huge == SHMEM_HUGE_DENY)
-		return false;
+		return 0;
 	if (shmem_huge_force || shmem_huge == SHMEM_HUGE_FORCE)
-		return true;
+		return maybe_pmd_order;
 
+	/*
+	 * The huge order allocation for anon shmem is controlled through
+	 * the mTHP interface, so we still use PMD-sized huge order to
+	 * check whether global control is enabled.
+	 *
+	 * For tmpfs mmap()'s huge order, we still use PMD-sized order to
+	 * allocate huge pages due to lack of a write size hint.
+	 *
+	 * Otherwise, tmpfs will allow getting a highest order hint based on
+	 * the size of write and fallocate paths, then will try each allowable
+	 * huge orders.
+	 */
 	switch (SHMEM_SB(inode->i_sb)->huge) {
 	case SHMEM_HUGE_ALWAYS:
-		return true;
+		if (vma)
+			return maybe_pmd_order;
+
+		return shmem_mapping_size_orders(inode->i_mapping, index, write_end);
 	case SHMEM_HUGE_WITHIN_SIZE:
-		index = round_up(index + 1, HPAGE_PMD_NR);
-		i_size = max(write_end, i_size_read(inode));
-		i_size = round_up(i_size, PAGE_SIZE);
-		if (i_size >> PAGE_SHIFT >= index)
-			return true;
+		if (vma)
+			within_size_orders = maybe_pmd_order;
+		else
+			within_size_orders = shmem_mapping_size_orders(inode->i_mapping,
+								       index, write_end);
+
+		order = highest_order(within_size_orders);
+		while (within_size_orders) {
+			aligned_index = round_up(index + 1, 1 << order);
+			i_size = max(write_end, i_size_read(inode));
+			i_size = round_up(i_size, PAGE_SIZE);
+			if (i_size >> PAGE_SHIFT >= aligned_index)
+				return within_size_orders;
+
+			order = next_order(&within_size_orders, order);
+		}
 		fallthrough;
 	case SHMEM_HUGE_ADVISE:
 		if (vm_flags & VM_HUGEPAGE)
-			return true;
+			return maybe_pmd_order;
 		fallthrough;
 	default:
-		return false;
+		return 0;
 	}
 }
 
@@ -779,11 +846,12 @@ static unsigned long shmem_unused_huge_shrink(struct shmem_sb_info *sbinfo,
 	return 0;
 }
 
-static bool shmem_huge_global_enabled(struct inode *inode, pgoff_t index,
-				      loff_t write_end, bool shmem_huge_force,
-				      unsigned long vm_flags)
+static unsigned int shmem_huge_global_enabled(struct inode *inode, pgoff_t index,
+					      loff_t write_end, bool shmem_huge_force,
+					      struct vm_area_struct *vma,
+					      unsigned long vm_flags)
 {
-	return false;
+	return 0;
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
@@ -1180,7 +1248,7 @@ static int shmem_getattr(struct mnt_idmap *idmap,
 			STATX_ATTR_NODUMP);
 	generic_fillattr(idmap, request_mask, inode, stat);
 
-	if (shmem_huge_global_enabled(inode, 0, 0, false, 0))
+	if (shmem_huge_global_enabled(inode, 0, 0, false, NULL, 0))
 		stat->blksize = HPAGE_PMD_SIZE;
 
 	if (request_mask & STATX_BTIME) {
@@ -1689,22 +1757,18 @@ unsigned long shmem_allowable_huge_orders(struct inode *inode,
 	unsigned long mask = READ_ONCE(huge_shmem_orders_always);
 	unsigned long within_size_orders = READ_ONCE(huge_shmem_orders_within_size);
 	unsigned long vm_flags = vma ? vma->vm_flags : 0;
-	bool global_huge;
+	unsigned int global_orders;
 	loff_t i_size;
 	int order;
 
 	if (thp_disabled_by_hw() || (vma && vma_thp_disabled(vma, vm_flags)))
 		return 0;
 
-	global_huge = shmem_huge_global_enabled(inode, index, write_end,
-						shmem_huge_force, vm_flags);
-	if (!vma || !vma_is_anon_shmem(vma)) {
-		/*
-		 * For tmpfs, we now only support PMD sized THP if huge page
-		 * is enabled, otherwise fallback to order 0.
-		 */
-		return global_huge ? BIT(HPAGE_PMD_ORDER) : 0;
-	}
+	global_orders = shmem_huge_global_enabled(inode, index, write_end,
+						  shmem_huge_force, vma, vm_flags);
+	/* Tmpfs huge pages allocation */
+	if (!vma || !vma_is_anon_shmem(vma))
+		return global_orders;
 
 	/*
 	 * Following the 'deny' semantics of the top level, force the huge
@@ -1736,7 +1800,7 @@ unsigned long shmem_allowable_huge_orders(struct inode *inode,
 	if (vm_flags & VM_HUGEPAGE)
 		mask |= READ_ONCE(huge_shmem_orders_madvise);
 
-	if (global_huge)
+	if (global_orders > 0)
 		mask |= READ_ONCE(huge_shmem_orders_inherit);
 
 	return THP_ORDERS_ALL_FILE_DEFAULT & mask;
@@ -2751,12 +2815,6 @@ out_nomem:
 static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct inode *inode = file_inode(file);
-	struct shmem_inode_info *info = SHMEM_I(inode);
-	int ret;
-
-	ret = seal_check_write(info->seals, vma);
-	if (ret)
-		return ret;
 
 	file_accessed(file);
 	/* This is anonymous shared memory if it is unlinked at the time of mmap */
@@ -4582,48 +4640,37 @@ bad_value:
 	return invalfc(fc, "Bad value for '%s'", param->key);
 }
 
-static int shmem_parse_options(struct fs_context *fc, void *data)
+static char *shmem_next_opt(char **s)
 {
-	char *options = data;
+	char *sbegin = *s;
+	char *p;
 
-	if (options) {
-		int err = security_sb_eat_lsm_opts(options, &fc->security);
-		if (err)
-			return err;
-	}
+	if (sbegin == NULL)
+		return NULL;
 
-	while (options != NULL) {
-		char *this_char = options;
-		for (;;) {
-			/*
-			 * NUL-terminate this option: unfortunately,
-			 * mount options form a comma-separated list,
-			 * but mpol's nodelist may also contain commas.
-			 */
-			options = strchr(options, ',');
-			if (options == NULL)
-				break;
-			options++;
-			if (!isdigit(*options)) {
-				options[-1] = '\0';
-				break;
-			}
-		}
-		if (*this_char) {
-			char *value = strchr(this_char, '=');
-			size_t len = 0;
-			int err;
-
-			if (value) {
-				*value++ = '\0';
-				len = strlen(value);
-			}
-			err = vfs_parse_fs_string(fc, this_char, value, len);
-			if (err < 0)
-				return err;
+	/*
+	 * NUL-terminate this option: unfortunately,
+	 * mount options form a comma-separated list,
+	 * but mpol's nodelist may also contain commas.
+	 */
+	for (;;) {
+		p = strchr(*s, ',');
+		if (p == NULL)
+			break;
+		*s = p + 1;
+		if (!isdigit(*(p+1))) {
+			*p = '\0';
+			return sbegin;
 		}
 	}
-	return 0;
+
+	*s = NULL;
+	return sbegin;
+}
+
+static int shmem_parse_monolithic(struct fs_context *fc, void *data)
+{
+	return vfs_parse_monolithic_sep(fc, data, shmem_next_opt);
 }
 
 /*
@@ -4890,7 +4937,12 @@ static int shmem_fill_super(struct super_block *sb, struct fs_context *fc)
 	sbinfo->gid = ctx->gid;
 	sbinfo->full_inums = ctx->full_inums;
 	sbinfo->mode = ctx->mode;
-	sbinfo->huge = ctx->huge;
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	if (ctx->seen & SHMEM_SEEN_HUGE)
+		sbinfo->huge = ctx->huge;
+	else
+		sbinfo->huge = tmpfs_huge;
+#endif
 	sbinfo->mpol = ctx->mpol;
 	ctx->mpol = NULL;
 
@@ -4968,7 +5020,7 @@ static const struct fs_context_operations shmem_fs_context_ops = {
 	.free			= shmem_free_fc,
 	.get_tree		= shmem_get_tree,
 #ifdef CONFIG_TMPFS
-	.parse_monolithic	= shmem_parse_options,
+	.parse_monolithic	= shmem_parse_monolithic,
 	.parse_param		= shmem_parse_one,
 	.reconfigure		= shmem_reconfigure,
 #endif
@@ -5440,6 +5492,21 @@ static int __init setup_transparent_hugepage_shmem(char *str)
 	return 1;
 }
 __setup("transparent_hugepage_shmem=", setup_transparent_hugepage_shmem);
+
+static int __init setup_transparent_hugepage_tmpfs(char *str)
+{
+	int huge;
+
+	huge = shmem_parse_huge(str);
+	if (huge < 0) {
+		pr_warn("transparent_hugepage_tmpfs= cannot parse, ignored\n");
+		return huge;
+	}
+
+	tmpfs_huge = huge;
+	return 1;
+}
+__setup("transparent_hugepage_tmpfs=", setup_transparent_hugepage_tmpfs);
 
 static char str_dup[PAGE_SIZE] __initdata;
 static int __init setup_thp_shmem(char *str)

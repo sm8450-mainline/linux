@@ -203,6 +203,38 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 }
 
 /*
+ * vma has some anon_vma assigned, and is already inserted on that
+ * anon_vma's interval trees.
+ *
+ * Before updating the vma's vm_start / vm_end / vm_pgoff fields, the
+ * vma must be removed from the anon_vma's interval trees using
+ * anon_vma_interval_tree_pre_update_vma().
+ *
+ * After the update, the vma will be reinserted using
+ * anon_vma_interval_tree_post_update_vma().
+ *
+ * The entire update must be protected by exclusive mmap_lock and by
+ * the root anon_vma's mutex.
+ */
+static void
+anon_vma_interval_tree_pre_update_vma(struct vm_area_struct *vma)
+{
+	struct anon_vma_chain *avc;
+
+	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
+		anon_vma_interval_tree_remove(avc, &avc->anon_vma->rb_root);
+}
+
+static void
+anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
+{
+	struct anon_vma_chain *avc;
+
+	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
+		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
+}
+
+/*
  * vma_prepare() - Helper function for handling locking VMAs prior to altering
  * @vp: The initialized vma_prepare struct
  */
@@ -415,8 +447,9 @@ void unmap_region(struct ma_state *mas, struct vm_area_struct *vma,
  * has already been checked or doesn't make sense to fail.
  * VMA Iterator will point to the original VMA.
  */
-static int __split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
-		       unsigned long addr, int new_below)
+static __must_check int
+__split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
+	    unsigned long addr, int new_below)
 {
 	struct vma_prepare vp;
 	struct vm_area_struct *new;
@@ -508,38 +541,6 @@ static int split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		return -ENOMEM;
 
 	return __split_vma(vmi, vma, addr, new_below);
-}
-
-/*
- * vma has some anon_vma assigned, and is already inserted on that
- * anon_vma's interval trees.
- *
- * Before updating the vma's vm_start / vm_end / vm_pgoff fields, the
- * vma must be removed from the anon_vma's interval trees using
- * anon_vma_interval_tree_pre_update_vma().
- *
- * After the update, the vma will be reinserted using
- * anon_vma_interval_tree_post_update_vma().
- *
- * The entire update must be protected by exclusive mmap_lock and by
- * the root anon_vma's mutex.
- */
-void
-anon_vma_interval_tree_pre_update_vma(struct vm_area_struct *vma)
-{
-	struct anon_vma_chain *avc;
-
-	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
-		anon_vma_interval_tree_remove(avc, &avc->anon_vma->rb_root);
-}
-
-void
-anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
-{
-	struct anon_vma_chain *avc;
-
-	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
-		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
 }
 
 /*
@@ -710,7 +711,8 @@ static bool can_merge_remove_vma(struct vm_area_struct *vma)
  * - The caller must hold a WRITE lock on the mm_struct->mmap_lock.
  * - vmi must be positioned within [@vmg->vma->vm_start, @vmg->vma->vm_end).
  */
-static struct vm_area_struct *vma_merge_existing_range(struct vma_merge_struct *vmg)
+static __must_check struct vm_area_struct *vma_merge_existing_range(
+		struct vma_merge_struct *vmg)
 {
 	struct vm_area_struct *vma = vmg->vma;
 	struct vm_area_struct *prev = vmg->prev;
@@ -2480,4 +2482,418 @@ unacct_error:
 abort_munmap:
 	vms_abort_munmap_vmas(&map.vms, &map.mas_detach);
 	return error;
+}
+
+/*
+ * do_brk_flags() - Increase the brk vma if the flags match.
+ * @vmi: The vma iterator
+ * @addr: The start address
+ * @len: The length of the increase
+ * @vma: The vma,
+ * @flags: The VMA Flags
+ *
+ * Extend the brk VMA from addr to addr + len.  If the VMA is NULL or the flags
+ * do not match then create a new anonymous VMA.  Eventually we may be able to
+ * do some brk-specific accounting here.
+ */
+int do_brk_flags(struct vma_iterator *vmi, struct vm_area_struct *vma,
+		 unsigned long addr, unsigned long len, unsigned long flags)
+{
+	struct mm_struct *mm = current->mm;
+
+	/*
+	 * Check against address space limits by the changed size
+	 * Note: This happens *after* clearing old mappings in some code paths.
+	 */
+	flags |= VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
+	if (!may_expand_vm(mm, flags, len >> PAGE_SHIFT))
+		return -ENOMEM;
+
+	if (mm->map_count > sysctl_max_map_count)
+		return -ENOMEM;
+
+	if (security_vm_enough_memory_mm(mm, len >> PAGE_SHIFT))
+		return -ENOMEM;
+
+	/*
+	 * Expand the existing vma if possible; Note that singular lists do not
+	 * occur after forking, so the expand will only happen on new VMAs.
+	 */
+	if (vma && vma->vm_end == addr) {
+		VMG_STATE(vmg, mm, vmi, addr, addr + len, flags, PHYS_PFN(addr));
+
+		vmg.prev = vma;
+		/* vmi is positioned at prev, which this mode expects. */
+		vmg.merge_flags = VMG_FLAG_JUST_EXPAND;
+
+		if (vma_merge_new_range(&vmg))
+			goto out;
+		else if (vmg_nomem(&vmg))
+			goto unacct_fail;
+	}
+
+	if (vma)
+		vma_iter_next_range(vmi);
+	/* create a vma struct for an anonymous mapping */
+	vma = vm_area_alloc(mm);
+	if (!vma)
+		goto unacct_fail;
+
+	vma_set_anonymous(vma);
+	vma_set_range(vma, addr, addr + len, addr >> PAGE_SHIFT);
+	vm_flags_init(vma, flags);
+	vma->vm_page_prot = vm_get_page_prot(flags);
+	vma_start_write(vma);
+	if (vma_iter_store_gfp(vmi, vma, GFP_KERNEL))
+		goto mas_store_fail;
+
+	mm->map_count++;
+	validate_mm(mm);
+	ksm_add_vma(vma);
+out:
+	perf_event_mmap(vma);
+	mm->total_vm += len >> PAGE_SHIFT;
+	mm->data_vm += len >> PAGE_SHIFT;
+	if (flags & VM_LOCKED)
+		mm->locked_vm += (len >> PAGE_SHIFT);
+	vm_flags_set(vma, VM_SOFTDIRTY);
+	return 0;
+
+mas_store_fail:
+	vm_area_free(vma);
+unacct_fail:
+	vm_unacct_memory(len >> PAGE_SHIFT);
+	return -ENOMEM;
+}
+
+/**
+ * unmapped_area() - Find an area between the low_limit and the high_limit with
+ * the correct alignment and offset, all from @info. Note: current->mm is used
+ * for the search.
+ *
+ * @info: The unmapped area information including the range [low_limit -
+ * high_limit), the alignment offset and mask.
+ *
+ * Return: A memory address or -ENOMEM.
+ */
+unsigned long unmapped_area(struct vm_unmapped_area_info *info)
+{
+	unsigned long length, gap;
+	unsigned long low_limit, high_limit;
+	struct vm_area_struct *tmp;
+	VMA_ITERATOR(vmi, current->mm, 0);
+
+	/* Adjust search length to account for worst case alignment overhead */
+	length = info->length + info->align_mask + info->start_gap;
+	if (length < info->length)
+		return -ENOMEM;
+
+	low_limit = info->low_limit;
+	if (low_limit < mmap_min_addr)
+		low_limit = mmap_min_addr;
+	high_limit = info->high_limit;
+retry:
+	if (vma_iter_area_lowest(&vmi, low_limit, high_limit, length))
+		return -ENOMEM;
+
+	/*
+	 * Adjust for the gap first so it doesn't interfere with the
+	 * later alignment. The first step is the minimum needed to
+	 * fulill the start gap, the next steps is the minimum to align
+	 * that. It is the minimum needed to fulill both.
+	 */
+	gap = vma_iter_addr(&vmi) + info->start_gap;
+	gap += (info->align_offset - gap) & info->align_mask;
+	tmp = vma_next(&vmi);
+	if (tmp && (tmp->vm_flags & VM_STARTGAP_FLAGS)) { /* Avoid prev check if possible */
+		if (vm_start_gap(tmp) < gap + length - 1) {
+			low_limit = tmp->vm_end;
+			vma_iter_reset(&vmi);
+			goto retry;
+		}
+	} else {
+		tmp = vma_prev(&vmi);
+		if (tmp && vm_end_gap(tmp) > gap) {
+			low_limit = vm_end_gap(tmp);
+			vma_iter_reset(&vmi);
+			goto retry;
+		}
+	}
+
+	return gap;
+}
+
+/**
+ * unmapped_area_topdown() - Find an area between the low_limit and the
+ * high_limit with the correct alignment and offset at the highest available
+ * address, all from @info. Note: current->mm is used for the search.
+ *
+ * @info: The unmapped area information including the range [low_limit -
+ * high_limit), the alignment offset and mask.
+ *
+ * Return: A memory address or -ENOMEM.
+ */
+unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
+{
+	unsigned long length, gap, gap_end;
+	unsigned long low_limit, high_limit;
+	struct vm_area_struct *tmp;
+	VMA_ITERATOR(vmi, current->mm, 0);
+
+	/* Adjust search length to account for worst case alignment overhead */
+	length = info->length + info->align_mask + info->start_gap;
+	if (length < info->length)
+		return -ENOMEM;
+
+	low_limit = info->low_limit;
+	if (low_limit < mmap_min_addr)
+		low_limit = mmap_min_addr;
+	high_limit = info->high_limit;
+retry:
+	if (vma_iter_area_highest(&vmi, low_limit, high_limit, length))
+		return -ENOMEM;
+
+	gap = vma_iter_end(&vmi) - info->length;
+	gap -= (gap - info->align_offset) & info->align_mask;
+	gap_end = vma_iter_end(&vmi);
+	tmp = vma_next(&vmi);
+	if (tmp && (tmp->vm_flags & VM_STARTGAP_FLAGS)) { /* Avoid prev check if possible */
+		if (vm_start_gap(tmp) < gap_end) {
+			high_limit = vm_start_gap(tmp);
+			vma_iter_reset(&vmi);
+			goto retry;
+		}
+	} else {
+		tmp = vma_prev(&vmi);
+		if (tmp && vm_end_gap(tmp) > gap) {
+			high_limit = tmp->vm_start;
+			vma_iter_reset(&vmi);
+			goto retry;
+		}
+	}
+
+	return gap;
+}
+
+/*
+ * Verify that the stack growth is acceptable and
+ * update accounting. This is shared with both the
+ * grow-up and grow-down cases.
+ */
+static int acct_stack_growth(struct vm_area_struct *vma,
+			     unsigned long size, unsigned long grow)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	unsigned long new_start;
+
+	/* address space limit tests */
+	if (!may_expand_vm(mm, vma->vm_flags, grow))
+		return -ENOMEM;
+
+	/* Stack limit test */
+	if (size > rlimit(RLIMIT_STACK))
+		return -ENOMEM;
+
+	/* mlock limit tests */
+	if (!mlock_future_ok(mm, vma->vm_flags, grow << PAGE_SHIFT))
+		return -ENOMEM;
+
+	/* Check to ensure the stack will not grow into a hugetlb-only region */
+	new_start = (vma->vm_flags & VM_GROWSUP) ? vma->vm_start :
+			vma->vm_end - size;
+	if (is_hugepage_only_range(vma->vm_mm, new_start, size))
+		return -EFAULT;
+
+	/*
+	 * Overcommit..  This must be the final test, as it will
+	 * update security statistics.
+	 */
+	if (security_vm_enough_memory_mm(mm, grow))
+		return -ENOMEM;
+
+	return 0;
+}
+
+#if defined(CONFIG_STACK_GROWSUP)
+/*
+ * PA-RISC uses this for its stack.
+ * vma is the last one with address > vma->vm_end.  Have to extend vma.
+ */
+int expand_upwards(struct vm_area_struct *vma, unsigned long address)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct vm_area_struct *next;
+	unsigned long gap_addr;
+	int error = 0;
+	VMA_ITERATOR(vmi, mm, vma->vm_start);
+
+	if (!(vma->vm_flags & VM_GROWSUP))
+		return -EFAULT;
+
+	mmap_assert_write_locked(mm);
+
+	/* Guard against exceeding limits of the address space. */
+	address &= PAGE_MASK;
+	if (address >= (TASK_SIZE & PAGE_MASK))
+		return -ENOMEM;
+	address += PAGE_SIZE;
+
+	/* Enforce stack_guard_gap */
+	gap_addr = address + stack_guard_gap;
+
+	/* Guard against overflow */
+	if (gap_addr < address || gap_addr > TASK_SIZE)
+		gap_addr = TASK_SIZE;
+
+	next = find_vma_intersection(mm, vma->vm_end, gap_addr);
+	if (next && vma_is_accessible(next)) {
+		if (!(next->vm_flags & VM_GROWSUP))
+			return -ENOMEM;
+		/* Check that both stack segments have the same anon_vma? */
+	}
+
+	if (next)
+		vma_iter_prev_range_limit(&vmi, address);
+
+	vma_iter_config(&vmi, vma->vm_start, address);
+	if (vma_iter_prealloc(&vmi, vma))
+		return -ENOMEM;
+
+	/* We must make sure the anon_vma is allocated. */
+	if (unlikely(anon_vma_prepare(vma))) {
+		vma_iter_free(&vmi);
+		return -ENOMEM;
+	}
+
+	/* Lock the VMA before expanding to prevent concurrent page faults */
+	vma_start_write(vma);
+	/* We update the anon VMA tree. */
+	anon_vma_lock_write(vma->anon_vma);
+
+	/* Somebody else might have raced and expanded it already */
+	if (address > vma->vm_end) {
+		unsigned long size, grow;
+
+		size = address - vma->vm_start;
+		grow = (address - vma->vm_end) >> PAGE_SHIFT;
+
+		error = -ENOMEM;
+		if (vma->vm_pgoff + (size >> PAGE_SHIFT) >= vma->vm_pgoff) {
+			error = acct_stack_growth(vma, size, grow);
+			if (!error) {
+				if (vma->vm_flags & VM_LOCKED)
+					mm->locked_vm += grow;
+				vm_stat_account(mm, vma->vm_flags, grow);
+				anon_vma_interval_tree_pre_update_vma(vma);
+				vma->vm_end = address;
+				/* Overwrite old entry in mtree. */
+				vma_iter_store(&vmi, vma);
+				anon_vma_interval_tree_post_update_vma(vma);
+
+				perf_event_mmap(vma);
+			}
+		}
+	}
+	anon_vma_unlock_write(vma->anon_vma);
+	vma_iter_free(&vmi);
+	validate_mm(mm);
+	return error;
+}
+#endif /* CONFIG_STACK_GROWSUP */
+
+/*
+ * vma is the first one with address < vma->vm_start.  Have to extend vma.
+ * mmap_lock held for writing.
+ */
+int expand_downwards(struct vm_area_struct *vma, unsigned long address)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct vm_area_struct *prev;
+	int error = 0;
+	VMA_ITERATOR(vmi, mm, vma->vm_start);
+
+	if (!(vma->vm_flags & VM_GROWSDOWN))
+		return -EFAULT;
+
+	mmap_assert_write_locked(mm);
+
+	address &= PAGE_MASK;
+	if (address < mmap_min_addr || address < FIRST_USER_ADDRESS)
+		return -EPERM;
+
+	/* Enforce stack_guard_gap */
+	prev = vma_prev(&vmi);
+	/* Check that both stack segments have the same anon_vma? */
+	if (prev) {
+		if (!(prev->vm_flags & VM_GROWSDOWN) &&
+		    vma_is_accessible(prev) &&
+		    (address - prev->vm_end < stack_guard_gap))
+			return -ENOMEM;
+	}
+
+	if (prev)
+		vma_iter_next_range_limit(&vmi, vma->vm_start);
+
+	vma_iter_config(&vmi, address, vma->vm_end);
+	if (vma_iter_prealloc(&vmi, vma))
+		return -ENOMEM;
+
+	/* We must make sure the anon_vma is allocated. */
+	if (unlikely(anon_vma_prepare(vma))) {
+		vma_iter_free(&vmi);
+		return -ENOMEM;
+	}
+
+	/* Lock the VMA before expanding to prevent concurrent page faults */
+	vma_start_write(vma);
+	/* We update the anon VMA tree. */
+	anon_vma_lock_write(vma->anon_vma);
+
+	/* Somebody else might have raced and expanded it already */
+	if (address < vma->vm_start) {
+		unsigned long size, grow;
+
+		size = vma->vm_end - address;
+		grow = (vma->vm_start - address) >> PAGE_SHIFT;
+
+		error = -ENOMEM;
+		if (grow <= vma->vm_pgoff) {
+			error = acct_stack_growth(vma, size, grow);
+			if (!error) {
+				if (vma->vm_flags & VM_LOCKED)
+					mm->locked_vm += grow;
+				vm_stat_account(mm, vma->vm_flags, grow);
+				anon_vma_interval_tree_pre_update_vma(vma);
+				vma->vm_start = address;
+				vma->vm_pgoff -= grow;
+				/* Overwrite old entry in mtree. */
+				vma_iter_store(&vmi, vma);
+				anon_vma_interval_tree_post_update_vma(vma);
+
+				perf_event_mmap(vma);
+			}
+		}
+	}
+	anon_vma_unlock_write(vma->anon_vma);
+	vma_iter_free(&vmi);
+	validate_mm(mm);
+	return error;
+}
+
+int __vm_munmap(unsigned long start, size_t len, bool unlock)
+{
+	int ret;
+	struct mm_struct *mm = current->mm;
+	LIST_HEAD(uf);
+	VMA_ITERATOR(vmi, mm, start);
+
+	if (mmap_write_lock_killable(mm))
+		return -EINTR;
+
+	ret = do_vmi_munmap(&vmi, mm, start, len, &uf, unlock);
+	if (ret || !unlock)
+		mmap_write_unlock(mm);
+
+	userfaultfd_unmap_complete(mm, &uf);
+	return ret;
 }
