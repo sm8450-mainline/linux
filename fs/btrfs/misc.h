@@ -163,4 +163,32 @@ static inline bool bitmap_test_range_all_zero(const unsigned long *addr,
 	return (found_set == start + nbits);
 }
 
+/*
+ * Count how many bits are set in the bitmap.
+ *
+ * Similar to bitmap_weight() but accepts a subrange of the bitmap.
+ */
+static inline unsigned int bitmap_count_set(const unsigned long *addr,
+					    unsigned long start,
+					    unsigned long nbits)
+{
+	const unsigned long bitmap_nbits = start + nbits;
+	unsigned long cur = start;
+	unsigned long total_set = 0;
+
+	while (cur < bitmap_nbits) {
+		unsigned long found_zero;
+		unsigned long found_set;
+
+		found_zero = find_next_zero_bit(addr, bitmap_nbits, cur);
+		total_set += found_zero - cur;
+
+		cur = found_zero;
+		if (cur >= bitmap_nbits)
+			break;
+		found_set = find_next_bit(addr, bitmap_nbits, cur);
+		cur = found_set;
+	}
+	return total_set;
+}
 #endif

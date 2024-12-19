@@ -973,6 +973,105 @@ int btrfs_check_chunk_valid(struct extent_buffer *leaf,
 	return 0;
 }
 
+int btrfs_check_system_chunk_array(struct btrfs_fs_info *fs_info,
+				   const struct btrfs_super_block *sb)
+{
+	struct extent_buffer *dummy;
+	u32 array_size;
+	u32 cur_offset = 0;
+	u32 len;
+	int ret = 0;
+
+	/*
+	 * We allocated a dummy extent, just to use extent buffer accessors.
+	 * There will be unused space after BTRFS_SUPER_INFO_SIZE, but
+	 * that's fine, we will not go beyond system chunk array anyway.
+	 */
+	dummy = alloc_dummy_extent_buffer(fs_info, BTRFS_SUPER_INFO_OFFSET);
+	if (!dummy)
+		return -ENOMEM;
+	set_extent_buffer_uptodate(dummy);
+	write_extent_buffer(dummy, sb, 0, BTRFS_SUPER_INFO_SIZE);
+
+	array_size = btrfs_super_sys_array_size(sb);
+	if (array_size > BTRFS_SYSTEM_CHUNK_ARRAY_SIZE) {
+		btrfs_crit(fs_info,
+			   "superblock syschunk too large, have %u expect <=%u",
+			   array_size, BTRFS_SYSTEM_CHUNK_ARRAY_SIZE);
+		ret = -EUCLEAN;
+		goto out;
+	}
+
+	while (cur_offset < array_size) {
+		struct btrfs_disk_key *disk_key;
+		struct btrfs_key key;
+		struct btrfs_chunk *chunk;
+		u32 num_stripes;
+		u64 type;
+
+		len = sizeof(*disk_key);
+		if (cur_offset + len > array_size)
+			goto out_short_read;
+		disk_key = (struct btrfs_disk_key *)(sb->sys_chunk_array + cur_offset);
+		btrfs_disk_key_to_cpu(&key, disk_key);
+		cur_offset += len;
+
+		if (key.type != BTRFS_CHUNK_ITEM_KEY) {
+			btrfs_crit(fs_info,
+			    "unexpected item type %u in sys_array at offset %u",
+				  (u32)key.type, cur_offset);
+			ret = -EUCLEAN;
+			goto out;
+		}
+		/*
+		 * At least one btrfs_chunk with one stripe must be present,
+		 * exact stripe count check comes afterwards
+		 */
+		len = btrfs_chunk_item_size(1);
+		if (cur_offset + len > array_size)
+			goto out_short_read;
+
+		chunk = (struct btrfs_chunk *)
+			(offsetof(struct btrfs_super_block, sys_chunk_array) +
+			 cur_offset);
+		num_stripes = btrfs_chunk_num_stripes(dummy, chunk);
+		if (!num_stripes) {
+			btrfs_crit(fs_info,
+			"invalid number of stripes %u in sys_array at offset %u",
+				  num_stripes, cur_offset);
+			ret = -EUCLEAN;
+			goto out;
+		}
+		type = btrfs_chunk_type(dummy, chunk);
+		if ((type & BTRFS_BLOCK_GROUP_SYSTEM) == 0) {
+			btrfs_err(fs_info,
+			"invalid chunk type %llu in sys_array at offset %u",
+				  type, cur_offset);
+			ret = -EUCLEAN;
+			goto out;
+		}
+
+		len = btrfs_chunk_item_size(num_stripes);
+		if (cur_offset + len > array_size)
+			goto out_short_read;
+
+		ret = btrfs_check_chunk_valid(dummy, chunk, key.offset);
+		if (ret)
+			goto out;
+		cur_offset += len;
+	}
+out:
+	free_extent_buffer_stale(dummy);
+	return ret;
+
+out_short_read:
+	btrfs_crit(fs_info,
+	"sys_array too short to read %u bytes at offset %u array size %u",
+		   len, cur_offset, array_size);
+	free_extent_buffer_stale(dummy);
+	return ret;
+}
+
 /*
  * Enhanced version of chunk item checker.
  *

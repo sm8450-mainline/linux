@@ -154,6 +154,15 @@ struct btrfs_ordered_extent {
 	struct list_head work_list;
 
 	struct list_head bioc_list;
+
+#ifdef CONFIG_BTRFS_DEBUG
+	/*
+	 * Set if one block has finished.
+	 *
+	 * To catch double freeing with more accuracy.
+	 */
+	unsigned long *finished_bitmap;
+#endif
 };
 
 int btrfs_finish_one_ordered(struct btrfs_ordered_extent *ordered_extent);
