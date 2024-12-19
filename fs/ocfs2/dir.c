@@ -378,7 +378,7 @@ static inline int ocfs2_search_dirblock(struct buffer_head *bh,
 
 		/* prevent looping on a bad block */
 		de_len = le16_to_cpu(de->rec_len);
-		if (de_len <= 0) {
+		if (de_len <= 0 || de_len > sizeof(*de)) {
 			ret = -1;
 			goto bail;
 		}
