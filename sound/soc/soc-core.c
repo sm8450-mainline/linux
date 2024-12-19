@@ -1646,6 +1646,7 @@ static int soc_probe_component(struct snd_soc_card *card,
 				      component->driver->num_dapm_routes);
 	if (ret < 0) {
 		if (card->disable_route_checks) {
+			ret = 0;
 			dev_info(card->dev,
 				 "%s: disable_route_checks set, ignoring errors on add_routes\n",
 				 __func__);
