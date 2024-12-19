@@ -932,9 +932,17 @@
 	status = "okay";
 };
 
+&smb2360_0 {
+	status = "okay";
+};
+
 &smb2360_0_eusb2_repeater {
 	vdd18-supply = <&vreg_l3d_1p8>;
 	vdd3-supply = <&vreg_l2b_3p0>;
+};
+
+&smb2360_1 {
+	status = "okay";
 };
 
 &smb2360_1_eusb2_repeater {
@@ -1197,6 +1205,10 @@
 	status = "okay";
 };
 
+&usb_1_ss0_dwc3 {
+	dr_mode = "host";
+};
+
 &usb_1_ss0_dwc3_hs {
 	remote-endpoint = <&pmic_glink_ss0_hs_in>;
 };
@@ -1225,6 +1237,10 @@
 	status = "okay";
 };
 
+&usb_1_ss1_dwc3 {
+	dr_mode = "host";
+};
+
 &usb_1_ss1_dwc3_hs {
 	remote-endpoint = <&pmic_glink_ss1_hs_in>;
 };
@@ -1251,6 +1267,10 @@
 
 &usb_1_ss2 {
 	status = "okay";
+};
+
+&usb_1_ss2_dwc3 {
+	dr_mode = "host";
 };
 
 &usb_1_ss2_dwc3_hs {
