@@ -119,6 +119,7 @@
 #define QM_SQC_VFT_BASE_MASK_V2		GENMASK(15, 0)
 #define QM_SQC_VFT_NUM_SHIFT_V2		45
 #define QM_SQC_VFT_NUM_MASK_V2		GENMASK(9, 0)
+#define QM_MAX_QC_TYPE                  2
 
 #define QM_ABNORMAL_INT_SOURCE		0x100000
 #define QM_ABNORMAL_INT_MASK		0x100004
@@ -234,8 +235,6 @@
 #define QM_QOS_MAX_CIR_U		6
 #define QM_AUTOSUSPEND_DELAY		3000
 
-#define QM_DEV_ALG_MAX_LEN		256
-
  /* abnormal status value for stopping queue */
 #define QM_STOP_QUEUE_FAIL		1
 #define	QM_DUMP_SQC_FAIL		3
@@ -333,6 +332,7 @@ static const struct hisi_qm_cap_info qm_cap_info_comm[] = {
 	{QM_SUPPORT_STOP_FUNC,     0x3100, 0, BIT(10), 0x0, 0x0, 0x1},
 	{QM_SUPPORT_MB_COMMAND,   0x3100, 0, BIT(11), 0x0, 0x0, 0x1},
 	{QM_SUPPORT_SVA_PREFETCH, 0x3100, 0, BIT(14), 0x0, 0x0, 0x1},
+	{QM_SUPPORT_DAE,          0x3100, 0, BIT(15), 0x0, 0x0, 0x0},
 };
 
 static const struct hisi_qm_cap_info qm_cap_info_pf[] = {
@@ -501,15 +501,20 @@ static u32 qm_get_dev_err_status(struct hisi_qm *qm)
 /* Check if the error causes the master ooo block */
 static bool qm_check_dev_error(struct hisi_qm *qm)
 {
-	u32 val, dev_val;
+	struct hisi_qm *pf_qm = pci_get_drvdata(pci_physfn(qm->pdev));
+	u32 err_status;
 
-	if (qm->fun_type == QM_HW_VF)
+	if (pf_qm->fun_type == QM_HW_VF)
 		return false;
 
-	val = qm_get_hw_error_status(qm) & qm->err_info.qm_shutdown_mask;
-	dev_val = qm_get_dev_err_status(qm) & qm->err_info.dev_shutdown_mask;
+	err_status = qm_get_hw_error_status(pf_qm);
+	if (err_status & pf_qm->err_info.qm_shutdown_mask)
+		return true;
 
-	return val || dev_val;
+	if (pf_qm->err_ini->dev_is_abnormal)
+		return pf_qm->err_ini->dev_is_abnormal(pf_qm);
+
+	return false;
 }
 
 static int qm_wait_reset_finish(struct hisi_qm *qm)
@@ -654,7 +659,6 @@ EXPORT_SYMBOL_GPL(hisi_qm_mb);
 /* op 0: set xqc information to hardware, 1: get xqc information from hardware. */
 int qm_set_and_get_xqc(struct hisi_qm *qm, u8 cmd, void *xqc, u32 qp_id, bool op)
 {
-	struct hisi_qm *pf_qm = pci_get_drvdata(pci_physfn(qm->pdev));
 	struct qm_mailbox mailbox;
 	dma_addr_t xqc_dma;
 	void *tmp_xqc;
@@ -688,7 +692,7 @@ int qm_set_and_get_xqc(struct hisi_qm *qm, u8 cmd, void *xqc, u32 qp_id, bool op
 	}
 
 	/* Setting xqc will fail if master OOO is blocked. */
-	if (qm_check_dev_error(pf_qm)) {
+	if (qm_check_dev_error(qm)) {
 		dev_err(&qm->pdev->dev, "failed to send mailbox since qm is stop!\n");
 		return -EIO;
 	}
@@ -855,10 +859,10 @@ int hisi_qm_set_algs(struct hisi_qm *qm, u64 alg_msk, const struct qm_dev_alg *d
 			strcat(algs, dev_algs[i].alg);
 
 	ptr = strrchr(algs, '\n');
-	if (ptr) {
+	if (ptr)
 		*ptr = '\0';
-		qm->uacce->algs = algs;
-	}
+
+	qm->uacce->algs = algs;
 
 	return 0;
 }
@@ -1052,11 +1056,10 @@ static void qm_disable_qp(struct hisi_qm *qm, u32 qp_id)
 
 static void qm_reset_function(struct hisi_qm *qm)
 {
-	struct hisi_qm *pf_qm = pci_get_drvdata(pci_physfn(qm->pdev));
 	struct device *dev = &qm->pdev->dev;
 	int ret;
 
-	if (qm_check_dev_error(pf_qm))
+	if (qm_check_dev_error(qm))
 		return;
 
 	ret = qm_reset_prepare_ready(qm);
@@ -2156,12 +2159,11 @@ static int qm_wait_qp_empty(struct hisi_qm *qm, u32 *state, u32 qp_id)
 static int qm_drain_qp(struct hisi_qp *qp)
 {
 	struct hisi_qm *qm = qp->qm;
-	struct hisi_qm *pf_qm = pci_get_drvdata(pci_physfn(qm->pdev));
 	u32 state = 0;
 	int ret;
 
 	/* No need to judge if master OOO is blocked. */
-	if (qm_check_dev_error(pf_qm))
+	if (qm_check_dev_error(qm))
 		return 0;
 
 	/* HW V3 supports drain qp by device */
@@ -2475,7 +2477,7 @@ static long hisi_qm_uacce_ioctl(struct uacce_queue *q, unsigned int cmd,
 				   sizeof(struct hisi_qp_ctx)))
 			return -EFAULT;
 
-		if (qp_ctx.qc_type != 0 && qp_ctx.qc_type != 1)
+		if (qp_ctx.qc_type > QM_MAX_QC_TYPE)
 			return -EINVAL;
 
 		qm_set_sqctype(q, qp_ctx.qc_type);
@@ -4137,6 +4139,12 @@ static int qm_controller_reset_prepare(struct hisi_qm *qm)
 	struct pci_dev *pdev = qm->pdev;
 	int ret;
 
+	if (qm->err_ini->set_priv_status) {
+		ret = qm->err_ini->set_priv_status(qm);
+		if (ret)
+			return ret;
+	}
+
 	ret = qm_reset_prepare_ready(qm);
 	if (ret) {
 		pci_err(pdev, "Controller reset not ready!\n");
@@ -4527,7 +4535,7 @@ void hisi_qm_reset_prepare(struct pci_dev *pdev)
 	 * Check whether there is an ECC mbit error, If it occurs, need to
 	 * wait for soft reset to fix it.
 	 */
-	while (qm_check_dev_error(pf_qm)) {
+	while (qm_check_dev_error(qm)) {
 		msleep(++delay);
 		if (delay > QM_RESET_WAIT_TIMEOUT)
 			return;
@@ -5247,6 +5255,14 @@ static int qm_clear_device(struct hisi_qm *qm)
 		return ret;
 	}
 
+	if (qm->err_ini->set_priv_status) {
+		ret = qm->err_ini->set_priv_status(qm);
+		if (ret) {
+			writel(0x0, qm->io_base + ACC_MASTER_GLOBAL_CTRL);
+			return ret;
+		}
+	}
+
 	return qm_reset_device(qm);
 }
 
@@ -5597,6 +5613,12 @@ static int qm_prepare_for_suspend(struct hisi_qm *qm)
 	ret = qm_master_ooo_check(qm);
 	if (ret)
 		return ret;
+
+	if (qm->err_ini->set_priv_status) {
+		ret = qm->err_ini->set_priv_status(qm);
+		if (ret)
+			return ret;
+	}
 
 	ret = qm_set_pf_mse(qm, false);
 	if (ret)
