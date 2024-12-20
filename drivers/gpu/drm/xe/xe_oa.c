@@ -97,6 +97,7 @@ struct xe_oa_open_param {
 	int num_syncs;
 	struct xe_sync_entry *syncs;
 	size_t oa_buffer_size;
+	int wait_num_reports;
 };
 
 struct xe_oa_config_bo {
@@ -241,11 +242,10 @@ static void oa_timestamp_clear(struct xe_oa_stream *stream, u32 *report)
 static bool xe_oa_buffer_check_unlocked(struct xe_oa_stream *stream)
 {
 	u32 gtt_offset = xe_bo_ggtt_addr(stream->oa_buffer.bo);
+	u32 tail, hw_tail, partial_report_size, available;
 	int report_size = stream->oa_buffer.format->size;
-	u32 tail, hw_tail;
 	unsigned long flags;
 	bool pollin;
-	u32 partial_report_size;
 
 	spin_lock_irqsave(&stream->oa_buffer.ptr_lock, flags);
 
@@ -289,8 +289,8 @@ static bool xe_oa_buffer_check_unlocked(struct xe_oa_stream *stream)
 
 	stream->oa_buffer.tail = tail;
 
-	pollin = xe_oa_circ_diff(stream, stream->oa_buffer.tail,
-				 stream->oa_buffer.head) >= report_size;
+	available = xe_oa_circ_diff(stream, stream->oa_buffer.tail, stream->oa_buffer.head);
+	pollin = available >= stream->wait_num_reports * report_size;
 
 	spin_unlock_irqrestore(&stream->oa_buffer.ptr_lock, flags);
 
@@ -690,7 +690,9 @@ static void xe_oa_store_flex(struct xe_oa_stream *stream, struct xe_lrc *lrc,
 	u32 offset = xe_bo_ggtt_addr(lrc->bo);
 
 	do {
-		bb->cs[bb->len++] = MI_STORE_DATA_IMM | MI_SDI_GGTT | MI_SDI_NUM_DW(1);
+		bb->cs[bb->len++] = MI_STORE_DATA_IMM | MI_SDI_GGTT |
+				    MI_FORCE_WRITE_COMPLETION_CHECK |
+				    MI_SDI_NUM_DW(1);
 		bb->cs[bb->len++] = offset + flex->offset * sizeof(u32);
 		bb->cs[bb->len++] = 0;
 		bb->cs[bb->len++] = flex->value;
@@ -1285,6 +1287,17 @@ static int xe_oa_set_prop_oa_buffer_size(struct xe_oa *oa, u64 value,
 	return 0;
 }
 
+static int xe_oa_set_prop_wait_num_reports(struct xe_oa *oa, u64 value,
+					   struct xe_oa_open_param *param)
+{
+	if (!value) {
+		drm_dbg(&oa->xe->drm, "wait_num_reports %llu\n", value);
+		return -EINVAL;
+	}
+	param->wait_num_reports = value;
+	return 0;
+}
+
 static int xe_oa_set_prop_ret_inval(struct xe_oa *oa, u64 value,
 				    struct xe_oa_open_param *param)
 {
@@ -1306,6 +1319,7 @@ static const xe_oa_set_property_fn xe_oa_set_property_funcs_open[] = {
 	[DRM_XE_OA_PROPERTY_NUM_SYNCS] = xe_oa_set_prop_num_syncs,
 	[DRM_XE_OA_PROPERTY_SYNCS] = xe_oa_set_prop_syncs_user,
 	[DRM_XE_OA_PROPERTY_OA_BUFFER_SIZE] = xe_oa_set_prop_oa_buffer_size,
+	[DRM_XE_OA_PROPERTY_WAIT_NUM_REPORTS] = xe_oa_set_prop_wait_num_reports,
 };
 
 static const xe_oa_set_property_fn xe_oa_set_property_funcs_config[] = {
@@ -1321,6 +1335,7 @@ static const xe_oa_set_property_fn xe_oa_set_property_funcs_config[] = {
 	[DRM_XE_OA_PROPERTY_NUM_SYNCS] = xe_oa_set_prop_num_syncs,
 	[DRM_XE_OA_PROPERTY_SYNCS] = xe_oa_set_prop_syncs_user,
 	[DRM_XE_OA_PROPERTY_OA_BUFFER_SIZE] = xe_oa_set_prop_ret_inval,
+	[DRM_XE_OA_PROPERTY_WAIT_NUM_REPORTS] = xe_oa_set_prop_ret_inval,
 };
 
 static int xe_oa_user_ext_set_property(struct xe_oa *oa, enum xe_oa_user_extn_from from,
@@ -1797,6 +1812,7 @@ static int xe_oa_stream_init(struct xe_oa_stream *stream,
 	stream->periodic = param->period_exponent > 0;
 	stream->period_exponent = param->period_exponent;
 	stream->no_preempt = param->no_preempt;
+	stream->wait_num_reports = param->wait_num_reports;
 
 	stream->xef = xe_file_get(param->xef);
 	stream->num_syncs = param->num_syncs;
@@ -2155,6 +2171,14 @@ int xe_oa_stream_open_ioctl(struct drm_device *dev, u64 data, struct drm_file *f
 
 	if (!param.oa_buffer_size)
 		param.oa_buffer_size = DEFAULT_XE_OA_BUFFER_SIZE;
+
+	if (!param.wait_num_reports)
+		param.wait_num_reports = 1;
+	if (param.wait_num_reports > param.oa_buffer_size / f->size) {
+		drm_dbg(&oa->xe->drm, "wait_num_reports %d\n", param.wait_num_reports);
+		ret = -EINVAL;
+		goto err_exec_q;
+	}
 
 	ret = xe_oa_parse_syncs(oa, &param);
 	if (ret)
