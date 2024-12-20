@@ -202,6 +202,7 @@ struct msr_counter bic[] = {
 	{ 0x0, "Die%c6", NULL, 0, 0, 0, NULL, 0 },
 	{ 0x0, "SysWatt", NULL, 0, 0, 0, NULL, 0 },
 	{ 0x0, "Sys_J", NULL, 0, 0, 0, NULL, 0 },
+	{ 0x0, "NMI", NULL, 0, 0, 0, NULL, 0 },
 };
 
 #define MAX_BIC (sizeof(bic) / sizeof(struct msr_counter))
@@ -266,12 +267,13 @@ struct msr_counter bic[] = {
 #define	BIC_Diec6		(1ULL << 58)
 #define	BIC_SysWatt		(1ULL << 59)
 #define	BIC_Sys_J		(1ULL << 60)
+#define	BIC_NMI			(1ULL << 61)
 
 #define BIC_TOPOLOGY (BIC_Package | BIC_Node | BIC_CoreCnt | BIC_PkgCnt | BIC_Core | BIC_CPU | BIC_Die )
 #define BIC_THERMAL_PWR ( BIC_CoreTmp | BIC_PkgTmp | BIC_PkgWatt | BIC_CorWatt | BIC_GFXWatt | BIC_RAMWatt | BIC_PKG__ | BIC_RAM__)
 #define BIC_FREQUENCY (BIC_Avg_MHz | BIC_Busy | BIC_Bzy_MHz | BIC_TSC_MHz | BIC_GFXMHz | BIC_GFXACTMHz | BIC_SAMMHz | BIC_SAMACTMHz | BIC_UNCORE_MHZ)
-#define BIC_IDLE (BIC_sysfs | BIC_CPU_c1 | BIC_CPU_c3 | BIC_CPU_c6 | BIC_CPU_c7 | BIC_GFX_rc6 | BIC_Pkgpc2 | BIC_Pkgpc3 | BIC_Pkgpc6 | BIC_Pkgpc7 | BIC_Pkgpc8 | BIC_Pkgpc9 | BIC_Pkgpc10 | BIC_CPU_LPI | BIC_SYS_LPI | BIC_Mod_c6 | BIC_Totl_c0 | BIC_Any_c0 | BIC_GFX_c0 | BIC_CPUGFX | BIC_SAM_mc6 | BIC_Diec6)
-#define BIC_OTHER ( BIC_IRQ | BIC_SMI | BIC_ThreadC | BIC_CoreTmp | BIC_IPC)
+#define BIC_IDLE (BIC_Busy | BIC_sysfs | BIC_CPU_c1 | BIC_CPU_c3 | BIC_CPU_c6 | BIC_CPU_c7 | BIC_GFX_rc6 | BIC_Pkgpc2 | BIC_Pkgpc3 | BIC_Pkgpc6 | BIC_Pkgpc7 | BIC_Pkgpc8 | BIC_Pkgpc9 | BIC_Pkgpc10 | BIC_CPU_LPI | BIC_SYS_LPI | BIC_Mod_c6 | BIC_Totl_c0 | BIC_Any_c0 | BIC_GFX_c0 | BIC_CPUGFX | BIC_SAM_mc6 | BIC_Diec6)
+#define BIC_OTHER ( BIC_IRQ | BIC_NMI | BIC_SMI | BIC_ThreadC | BIC_CoreTmp | BIC_IPC)
 
 #define BIC_DISABLED_BY_DEFAULT	(BIC_USEC | BIC_TOD | BIC_APIC | BIC_X2APIC | BIC_SysWatt | BIC_Sys_J)
 
@@ -326,6 +328,7 @@ unsigned int rapl_joules;
 unsigned int summary_only;
 unsigned int list_header_only;
 unsigned int dump_only;
+unsigned int force_load;
 unsigned int has_aperf;
 unsigned int has_aperf_access;
 unsigned int has_epb;
@@ -1024,6 +1027,7 @@ static const struct platform_data turbostat_pdata[] = {
 	{ INTEL_ARROWLAKE_U, &adl_features },
 	{ INTEL_ARROWLAKE, &adl_features },
 	{ INTEL_LUNARLAKE_M, &lnl_features },
+	{ INTEL_PANTHERLAKE_L, &lnl_features },
 	{ INTEL_ATOM_SILVERMONT, &slv_features },
 	{ INTEL_ATOM_SILVERMONT_D, &slvd_features },
 	{ INTEL_ATOM_AIRMONT, &amt_features },
@@ -1036,6 +1040,7 @@ static const struct platform_data turbostat_pdata[] = {
 	{ INTEL_ATOM_GRACEMONT, &adl_features },
 	{ INTEL_ATOM_CRESTMONT_X, &srf_features },
 	{ INTEL_ATOM_CRESTMONT, &grr_features },
+	{ INTEL_ATOM_DARKMONT_X, &srf_features },
 	{ INTEL_XEON_PHI_KNL, &knl_features },
 	{ INTEL_XEON_PHI_KNM, &knl_features },
 	/*
@@ -1054,9 +1059,10 @@ void probe_platform_features(unsigned int family, unsigned int model)
 {
 	int i;
 
-	platform = &default_features;
 
 	if (authentic_amd || hygon_genuine) {
+		/* fallback to default features on unsupported models */
+		force_load++;
 		if (max_extended_level >= 0x80000007) {
 			unsigned int eax, ebx, ecx, edx;
 
@@ -1065,11 +1071,11 @@ void probe_platform_features(unsigned int family, unsigned int model)
 			if ((edx & (1 << 14)) && family >= 0x17)
 				platform = &amd_features_with_rapl;
 		}
-		return;
+		goto end;
 	}
 
 	if (!genuine_intel)
-		return;
+		goto end;
 
 	for (i = 0; turbostat_pdata[i].features; i++) {
 		if (VFM_FAMILY(turbostat_pdata[i].vfm) == family && VFM_MODEL(turbostat_pdata[i].vfm) == model) {
@@ -1077,6 +1083,19 @@ void probe_platform_features(unsigned int family, unsigned int model)
 			return;
 		}
 	}
+
+end:
+	if (force_load && !platform) {
+		fprintf(outf, "Forced to run on unsupported platform!\n");
+		platform = &default_features;
+	}
+
+	if (platform)
+		return;
+
+	fprintf(stderr, "Unsupported platform detected.\n"
+		"\tSee RUN THE LATEST VERSION on turbostat(8)\n");
+	exit(1);
 }
 
 /* Model specific support End */
@@ -1611,6 +1630,7 @@ struct thread_data {
 	unsigned long long c1;
 	unsigned long long instr_count;
 	unsigned long long irq_count;
+	unsigned long long nmi_count;
 	unsigned int smi_count;
 	unsigned int cpu_id;
 	unsigned int apic_id;
@@ -1917,6 +1937,7 @@ struct timeval tv_even, tv_odd, tv_delta;
 
 int *irq_column_2_cpu;		/* /proc/interrupts column numbers */
 int *irqs_per_cpu;		/* indexed by cpu_num */
+int *nmi_per_cpu;		/* indexed by cpu_num */
 
 void setup_all_buffers(bool startup);
 
@@ -2135,41 +2156,54 @@ void help(void)
 		"when COMMAND completes.\n"
 		"If no COMMAND is specified, turbostat wakes every 5-seconds\n"
 		"to print statistics, until interrupted.\n"
-		"  -a, --add	add a counter\n"
+		"  -a, --add counter\n"
+		"		add a counter\n"
 		"		  eg. --add msr0x10,u64,cpu,delta,MY_TSC\n"
 		"		  eg. --add perf/cstate_pkg/c2-residency,package,delta,percent,perfPC2\n"
 		"		  eg. --add pmt,name=XTAL,type=raw,domain=package0,offset=0,lsb=0,msb=63,guid=0x1a067102\n"
-		"  -c, --cpu	cpu-set	limit output to summary plus cpu-set:\n"
+		"  -c, --cpu cpu-set\n"
+		"		limit output to summary plus cpu-set:\n"
 		"		  {core | package | j,k,l..m,n-p }\n"
-		"  -d, --debug	displays usec, Time_Of_Day_Seconds and more debugging\n"
+		"  -d, --debug\n"
+		"		displays usec, Time_Of_Day_Seconds and more debugging\n"
 		"		debug messages are printed to stderr\n"
-		"  -D, --Dump	displays the raw counter values\n"
-		"  -e, --enable	[all | column]\n"
+		"  -D, --Dump\n"
+		"		displays the raw counter values\n"
+		"  -e, --enable [all | column]\n"
 		"		shows all or the specified disabled column\n"
-		"  -H, --hide [column|column,column,...]\n"
+		"  -f, --force\n"
+		"		force load turbostat with minimum default features on unsupported platforms.\n"
+		"  -H, --hide [column | column,column,...]\n"
 		"		hide the specified column(s)\n"
 		"  -i, --interval sec.subsec\n"
-		"		Override default 5-second measurement interval\n"
-		"  -J, --Joules	displays energy in Joules instead of Watts\n"
-		"  -l, --list	list column headers only\n"
-		"  -M, --no-msr Disable all uses of the MSR driver\n"
-		"  -P, --no-perf Disable all uses of the perf API\n"
+		"		override default 5-second measurement interval\n"
+		"  -J, --Joules\n"
+		"		displays energy in Joules instead of Watts\n"
+		"  -l, --list\n"
+		"		list column headers only\n"
+		"  -M, --no-msr\n"
+		"		disable all uses of the MSR driver\n"
+		"  -P, --no-perf\n"
+		"		disable all uses of the perf API\n"
 		"  -n, --num_iterations num\n"
 		"		number of the measurement iterations\n"
 		"  -N, --header_iterations num\n"
 		"		print header every num iterations\n"
 		"  -o, --out file\n"
 		"		create or truncate \"file\" for all output\n"
-		"  -q, --quiet	skip decoding system configuration header\n"
-		"  -s, --show [column|column,column,...]\n"
+		"  -q, --quiet\n"
+		"		skip decoding system configuration header\n"
+		"  -s, --show [column | column,column,...]\n"
 		"		show only the specified column(s)\n"
 		"  -S, --Summary\n"
 		"		limits output to 1-line system summary per interval\n"
 		"  -T, --TCC temperature\n"
 		"		sets the Thermal Control Circuit temperature in\n"
 		"		  degrees Celsius\n"
-		"  -h, --help	print this help message\n"
-		"  -v, --version	print version information\n" "\n" "For more help, run \"man turbostat\"\n");
+		"  -h, --help\n"
+		"		print this help message\n"
+		"  -v, --version\n"
+		"		print version information\n" "\n" "For more help, run \"man turbostat\"\n");
 }
 
 /*
@@ -2288,6 +2322,12 @@ void print_header(char *delim)
 			outp += sprintf(outp, "%s     IRQ", (printed++ ? delim : ""));
 		else
 			outp += sprintf(outp, "%sIRQ", (printed++ ? delim : ""));
+	}
+	if (DO_BIC(BIC_NMI)) {
+		if (sums_need_wide_columns)
+			outp += sprintf(outp, "%s     NMI", (printed++ ? delim : ""));
+		else
+			outp += sprintf(outp, "%sNMI", (printed++ ? delim : ""));
 	}
 
 	if (DO_BIC(BIC_SMI))
@@ -2575,6 +2615,8 @@ int dump_counters(struct thread_data *t, struct core_data *c, struct pkg_data *p
 
 		if (DO_BIC(BIC_IRQ))
 			outp += sprintf(outp, "IRQ: %lld\n", t->irq_count);
+		if (DO_BIC(BIC_NMI))
+			outp += sprintf(outp, "IRQ: %lld\n", t->nmi_count);
 		if (DO_BIC(BIC_SMI))
 			outp += sprintf(outp, "SMI: %d\n", t->smi_count);
 
@@ -2792,6 +2834,14 @@ int format_counters(struct thread_data *t, struct core_data *c, struct pkg_data 
 			outp += sprintf(outp, "%s%8lld", (printed++ ? delim : ""), t->irq_count);
 		else
 			outp += sprintf(outp, "%s%lld", (printed++ ? delim : ""), t->irq_count);
+	}
+
+	/* NMI */
+	if (DO_BIC(BIC_NMI)) {
+		if (sums_need_wide_columns)
+			outp += sprintf(outp, "%s%8lld", (printed++ ? delim : ""), t->nmi_count);
+		else
+			outp += sprintf(outp, "%s%lld", (printed++ ? delim : ""), t->nmi_count);
 	}
 
 	/* SMI */
@@ -3409,6 +3459,9 @@ int delta_thread(struct thread_data *new, struct thread_data *old, struct core_d
 	if (DO_BIC(BIC_IRQ))
 		old->irq_count = new->irq_count - old->irq_count;
 
+	if (DO_BIC(BIC_NMI))
+		old->nmi_count = new->nmi_count - old->nmi_count;
+
 	if (DO_BIC(BIC_SMI))
 		old->smi_count = new->smi_count - old->smi_count;
 
@@ -3489,6 +3542,7 @@ void clear_counters(struct thread_data *t, struct core_data *c, struct pkg_data 
 	t->instr_count = 0;
 
 	t->irq_count = 0;
+	t->nmi_count = 0;
 	t->smi_count = 0;
 
 	c->c3 = 0;
@@ -3593,6 +3647,7 @@ int sum_counters(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 	average.threads.instr_count += t->instr_count;
 
 	average.threads.irq_count += t->irq_count;
+	average.threads.nmi_count += t->nmi_count;
 	average.threads.smi_count += t->smi_count;
 
 	for (i = 0, mp = sys.tp; mp; i++, mp = mp->next) {
@@ -3734,6 +3789,9 @@ void compute_average(struct thread_data *t, struct core_data *c, struct pkg_data
 
 	if (average.threads.irq_count > 9999999)
 		sums_need_wide_columns = 1;
+	if (average.threads.nmi_count > 9999999)
+		sums_need_wide_columns = 1;
+
 
 	average.cores.c3 /= topo.allowed_cores;
 	average.cores.c6 /= topo.allowed_cores;
@@ -4590,6 +4648,8 @@ int get_counters(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 
 	if (DO_BIC(BIC_IRQ))
 		t->irq_count = irqs_per_cpu[cpu];
+	if (DO_BIC(BIC_NMI))
+		t->nmi_count = nmi_per_cpu[cpu];
 
 	get_cstate_counters(cpu, t, c, p);
 
@@ -5335,6 +5395,7 @@ void free_all_buffers(void)
 
 	free(irq_column_2_cpu);
 	free(irqs_per_cpu);
+	free(nmi_per_cpu);
 
 	for (i = 0; i <= topo.max_cpu_num; ++i) {
 		if (cpus[i].put_ids)
@@ -5791,16 +5852,21 @@ int snapshot_proc_interrupts(void)
 
 		irq_column_2_cpu[column] = cpu_number;
 		irqs_per_cpu[cpu_number] = 0;
+		nmi_per_cpu[cpu_number] = 0;
 	}
 
 	/* read /proc/interrupt count lines and sum up irqs per cpu */
 	while (1) {
 		int column;
 		char buf[64];
+		int this_row_is_nmi = 0;
 
-		retval = fscanf(fp, " %s:", buf);	/* flush irq# "N:" */
+		retval = fscanf(fp, " %s:", buf);	/* irq# "N:" */
 		if (retval != 1)
 			break;
+
+		if (strncmp(buf, "NMI", strlen("NMI")) == 0)
+			this_row_is_nmi = 1;
 
 		/* read the count per cpu */
 		for (column = 0; column < topo.num_cpus; ++column) {
@@ -5808,14 +5874,15 @@ int snapshot_proc_interrupts(void)
 			int cpu_number, irq_count;
 
 			retval = fscanf(fp, " %d", &irq_count);
+
 			if (retval != 1)
 				break;
 
 			cpu_number = irq_column_2_cpu[column];
 			irqs_per_cpu[cpu_number] += irq_count;
-
+			if (this_row_is_nmi)
+				nmi_per_cpu[cpu_number] += irq_count;
 		}
-
 		while (getc(fp) != '\n') ;	/* flush interrupt description */
 
 	}
@@ -5912,7 +5979,7 @@ int snapshot_sys_lpi_us(void)
  */
 int snapshot_proc_sysfs_files(void)
 {
-	if (DO_BIC(BIC_IRQ))
+	if (DO_BIC(BIC_IRQ) || DO_BIC(BIC_NMI))
 		if (snapshot_proc_interrupts())
 			return 1;
 
@@ -8233,6 +8300,7 @@ void process_cpuid()
 		aperf_mperf_multiplier = platform->need_perf_multiplier ? 1024 : 1;
 
 	BIC_PRESENT(BIC_IRQ);
+	BIC_PRESENT(BIC_NMI);
 	BIC_PRESENT(BIC_TSC_MHz);
 }
 
@@ -8583,7 +8651,11 @@ void allocate_irq_buffers(void)
 
 	irqs_per_cpu = calloc(topo.max_cpu_num + 1, sizeof(int));
 	if (irqs_per_cpu == NULL)
-		err(-1, "calloc %d", topo.max_cpu_num + 1);
+		err(-1, "calloc %d IRQ", topo.max_cpu_num + 1);
+
+	nmi_per_cpu = calloc(topo.max_cpu_num + 1, sizeof(int));
+	if (nmi_per_cpu == NULL)
+		err(-1, "calloc %d NMI", topo.max_cpu_num + 1);
 }
 
 int update_topo(struct thread_data *t, struct core_data *c, struct pkg_data *p)
@@ -9236,7 +9308,7 @@ int get_and_dump_counters(void)
 
 void print_version()
 {
-	fprintf(outf, "turbostat version 2024.11.30 - Len Brown <lenb@kernel.org>\n");
+	fprintf(outf, "turbostat version 2024.12.03 - Len Brown <lenb@kernel.org>\n");
 }
 
 #define COMMAND_LINE_SIZE 2048
@@ -9921,6 +9993,7 @@ void cmdline(int argc, char **argv)
 		{ "Dump", no_argument, 0, 'D' },
 		{ "debug", no_argument, 0, 'd' },	/* internal, not documented */
 		{ "enable", required_argument, 0, 'e' },
+		{ "force", no_argument, 0, 'f' },
 		{ "interval", required_argument, 0, 'i' },
 		{ "IPC", no_argument, 0, 'I' },
 		{ "num_iterations", required_argument, 0, 'n' },
@@ -9980,6 +10053,9 @@ void cmdline(int argc, char **argv)
 		case 'e':
 			/* --enable specified counter */
 			bic_enabled = bic_enabled | bic_lookup(optarg, SHOW_LIST);
+			break;
+		case 'f':
+			force_load++;
 			break;
 		case 'd':
 			debug++;
