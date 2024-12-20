@@ -10,7 +10,6 @@
 
 /* base module includes */
 
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/init.h>
@@ -25,7 +24,6 @@
 #include <linux/timer.h>
 #include <linux/delay.h>
 #include <linux/sched/signal.h>
-#include <linux/uaccess.h>
 #include <linux/usb.h>
 
 #include "gpibP.h"
