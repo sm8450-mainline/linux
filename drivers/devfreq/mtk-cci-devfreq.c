@@ -429,7 +429,7 @@ static const struct of_device_id mtk_ccifreq_machines[] = {
 MODULE_DEVICE_TABLE(of, mtk_ccifreq_machines);
 
 static struct platform_driver mtk_ccifreq_platdrv = {
-	.probe	= mtk_ccifreq_probe,
+	.probe = mtk_ccifreq_probe,
 	.remove = mtk_ccifreq_remove,
 	.driver = {
 		.name = "mtk-ccifreq",
