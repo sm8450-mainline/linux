@@ -163,6 +163,12 @@ An example call::
 	$ git log -1 --pretty=fixes 54a4f0239f2e
 	Fixes: 54a4f0239f2e ("KVM: MMU: make kvm_mmu_zap_page() return the number of pages it actually freed")
 
+Note that the "Fixes" tag, while it does get parsed by machines, is intended
+for humans (hence the Subject portion). It is preferred that hashes remain at
+12 characters even in the face of prefix collisions. When encountering hash
+prefix collisions, tools (and humans) need to resolve such collisions using
+the parenthetical patch Subject.
+
 .. _split_changes:
 
 Separate your changes

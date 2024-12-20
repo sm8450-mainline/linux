@@ -284,7 +284,7 @@ following tag ordering scheme:
 
      Commit
 
-       abcdef012345678 ("x86/xxx: Replace foo with bar")
+       ab0123456789 ("x86/xxx: Replace foo with bar")
 
      left an unused instance of variable foo around. Remove it.
 
@@ -295,7 +295,7 @@ following tag ordering scheme:
      The recent replacement of foo with bar left an unused instance of
      variable foo around. Remove it.
 
-     Fixes: abcdef012345678 ("x86/xxx: Replace foo with bar")
+     Fixes: ab0123456789 ("x86/xxx: Replace foo with bar")
      Signed-off-by: J.Dev <j.dev@mail>
 
    The latter puts the information about the patch into the focus and
