@@ -197,10 +197,8 @@ static struct cpuset top_cpuset = {
 
 /*
  * There are two global locks guarding cpuset structures - cpuset_mutex and
- * callback_lock. We also require taking task_lock() when dereferencing a
- * task's cpuset pointer. See "The task_lock() exception", at the end of this
- * comment.  The cpuset code uses only cpuset_mutex. Other kernel subsystems
- * can use cpuset_lock()/cpuset_unlock() to prevent change to cpuset
+ * callback_lock. The cpuset code uses only cpuset_mutex. Other kernel
+ * subsystems can use cpuset_lock()/cpuset_unlock() to prevent change to cpuset
  * structures. Note that cpuset_mutex needs to be a mutex as it is used in
  * paths that rely on priority inheritance (e.g. scheduler - on RT) for
  * correctness.
@@ -229,9 +227,6 @@ static struct cpuset top_cpuset = {
  * The cpuset_common_seq_show() handlers only hold callback_lock across
  * small pieces of code, such as when reading out possibly multi-word
  * cpumasks and nodemasks.
- *
- * Accessing a task's cpuset should be done in accordance with the
- * guidelines for accessing subsystem state in kernel/cgroup.c
  */
 
 static DEFINE_MUTEX(cpuset_mutex);
@@ -890,7 +885,15 @@ v2:
 	 */
 	if (cgrpv2) {
 		for (i = 0; i < ndoms; i++) {
-			cpumask_copy(doms[i], csa[i]->effective_cpus);
+			/*
+			 * The top cpuset may contain some boot time isolated
+			 * CPUs that need to be excluded from the sched domain.
+			 */
+			if (csa[i] == &top_cpuset)
+				cpumask_and(doms[i], csa[i]->effective_cpus,
+					    housekeeping_cpumask(HK_TYPE_DOMAIN));
+			else
+				cpumask_copy(doms[i], csa[i]->effective_cpus);
 			if (dattr)
 				dattr[i] = SD_ATTR_INIT;
 		}
