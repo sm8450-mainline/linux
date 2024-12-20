@@ -63,9 +63,8 @@ int dyn_event_register(struct dyn_event_operations *ops)
 		return -EINVAL;
 
 	INIT_LIST_HEAD(&ops->list);
-	mutex_lock(&dyn_event_ops_mutex);
+	guard(mutex)(&dyn_event_ops_mutex);
 	list_add_tail(&ops->list, &dyn_event_ops_list);
-	mutex_unlock(&dyn_event_ops_mutex);
 	return 0;
 }
 
@@ -106,20 +105,20 @@ int dyn_event_release(const char *raw_command, struct dyn_event_operations *type
 		goto out;
 	}
 
-	mutex_lock(&event_mutex);
-	for_each_dyn_event_safe(pos, n) {
-		if (type && type != pos->ops)
-			continue;
-		if (!pos->ops->match(system, event,
-				argc - 1, (const char **)argv + 1, pos))
-			continue;
+	scoped_guard(mutex, &event_mutex) {
+		for_each_dyn_event_safe(pos, n) {
+			if (type && type != pos->ops)
+				continue;
+			if (!pos->ops->match(system, event,
+					argc - 1, (const char **)argv + 1, pos))
+				continue;
 
-		ret = pos->ops->free(pos);
-		if (ret)
-			break;
+			ret = pos->ops->free(pos);
+			if (ret)
+				break;
+		}
+		tracing_reset_all_online_cpus();
 	}
-	tracing_reset_all_online_cpus();
-	mutex_unlock(&event_mutex);
 out:
 	argv_free(argv);
 	return ret;
@@ -133,13 +132,12 @@ static int create_dyn_event(const char *raw_command)
 	if (raw_command[0] == '-' || raw_command[0] == '!')
 		return dyn_event_release(raw_command, NULL);
 
-	mutex_lock(&dyn_event_ops_mutex);
+	guard(mutex)(&dyn_event_ops_mutex);
 	list_for_each_entry(ops, &dyn_event_ops_list, list) {
 		ret = ops->create(raw_command);
 		if (!ret || ret != -ECANCELED)
 			break;
 	}
-	mutex_unlock(&dyn_event_ops_mutex);
 	if (ret == -ECANCELED)
 		ret = -EINVAL;
 
@@ -198,7 +196,7 @@ int dyn_events_release_all(struct dyn_event_operations *type)
 	struct dyn_event *ev, *tmp;
 	int ret = 0;
 
-	mutex_lock(&event_mutex);
+	guard(mutex)(&event_mutex);
 	for_each_dyn_event(ev) {
 		if (type && ev->ops != type)
 			continue;
@@ -216,7 +214,6 @@ int dyn_events_release_all(struct dyn_event_operations *type)
 	}
 out:
 	tracing_reset_all_online_cpus();
-	mutex_unlock(&event_mutex);
 
 	return ret;
 }
