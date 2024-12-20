@@ -257,7 +257,7 @@ struct ethtool_link_ksettings {
  *   @mode : one of the ETHTOOL_LINK_MODE_*_BIT
  * (not atomic, no bound checking)
  *
- * Returns true/false.
+ * Returns: true/false.
  */
 #define ethtool_link_ksettings_test_link_mode(ptr, name, mode)		\
 	test_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, (ptr)->link_modes.name)
@@ -711,6 +711,7 @@ struct ethtool_rxfh_param {
  * @cmd: command number = %ETHTOOL_GET_TS_INFO
  * @so_timestamping: bit mask of the sum of the supported SO_TIMESTAMPING flags
  * @phc_index: device index of the associated PHC, or -1 if there is none
+ * @phc_qualifier: qualifier of the associated PHC
  * @tx_types: bit mask of the supported hwtstamp_tx_types enumeration values
  * @rx_filters: bit mask of the supported hwtstamp_rx_filters enumeration values
  */
@@ -718,6 +719,7 @@ struct kernel_ethtool_ts_info {
 	u32 cmd;
 	u32 so_timestamping;
 	int phc_index;
+	enum hwtstamp_provider_qualifier phc_qualifier;
 	enum hwtstamp_tx_types tx_types;
 	enum hwtstamp_rx_filters rx_filters;
 };
@@ -749,6 +751,7 @@ struct kernel_ethtool_ts_info {
  *	@rss_context argument to @create_rxfh_context and friends.
  * @supported_coalesce_params: supported types of interrupt coalescing.
  * @supported_ring_params: supported ring params.
+ * @supported_hwtstamp_qualifiers: bitfield of supported hwtstamp qualifier.
  * @get_drvinfo: Report driver/device information. Modern drivers no
  *	longer have to implement this callback. Most fields are
  *	correctly filled in by the core using system information, or
@@ -966,6 +969,7 @@ struct ethtool_ops {
 	u32	rxfh_max_num_contexts;
 	u32	supported_coalesce_params;
 	u32	supported_ring_params;
+	u32	supported_hwtstamp_qualifiers;
 	void	(*get_drvinfo)(struct net_device *, struct ethtool_drvinfo *);
 	int	(*get_regs_len)(struct net_device *);
 	void	(*get_regs)(struct net_device *, struct ethtool_regs *, void *);
@@ -1199,7 +1203,7 @@ ethtool_params_from_link_mode(struct ethtool_link_ksettings *link_ksettings,
  * @dev: pointer to net_device structure
  * @vclock_index: pointer to pointer of vclock index
  *
- * Return number of phc vclocks
+ * Return: number of phc vclocks
  */
 int ethtool_get_phc_vclocks(struct net_device *dev, int **vclock_index);
 
@@ -1253,7 +1257,7 @@ static inline int ethtool_mm_frag_size_min_to_add(u32 val_min, u32 *val_add,
  * ethtool_get_ts_info_by_layer - Obtains time stamping capabilities from the MAC or PHY layer.
  * @dev: pointer to net_device structure
  * @info: buffer to hold the result
- * Returns zero on success, non-zero otherwise.
+ * Returns: zero on success, non-zero otherwise.
  */
 int ethtool_get_ts_info_by_layer(struct net_device *dev,
 				 struct kernel_ethtool_ts_info *info);

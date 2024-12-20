@@ -82,6 +82,7 @@ struct xdp_metadata_ops;
 struct xdp_md;
 struct ethtool_netdev_state;
 struct phy_link_topology;
+struct hwtstamp_provider;
 
 typedef u32 xdp_features_t;
 
@@ -509,7 +510,7 @@ static inline bool napi_prefer_busy_poll(struct napi_struct *n)
  * is scheduled for example in the context of delayed timer
  * that can be skipped if a NAPI is already scheduled.
  *
- * Return True if NAPI is scheduled, False otherwise.
+ * Return: True if NAPI is scheduled, False otherwise.
  */
 static inline bool napi_is_scheduled(struct napi_struct *n)
 {
@@ -524,7 +525,7 @@ bool napi_schedule_prep(struct napi_struct *n);
  *
  * Schedule NAPI poll routine to be called if it is not already
  * running.
- * Return true if we schedule a NAPI or false if not.
+ * Return: true if we schedule a NAPI or false if not.
  * Refer to napi_schedule_prep() for additional reason on why
  * a NAPI might not be scheduled.
  */
@@ -558,7 +559,7 @@ static inline void napi_schedule_irqoff(struct napi_struct *n)
  * Mark NAPI processing as complete. Should only be called if poll budget
  * has not been completely consumed.
  * Prefer over napi_complete().
- * Return false if device should avoid rearming interrupts.
+ * Return: false if device should avoid rearming interrupts.
  */
 bool napi_complete_done(struct napi_struct *n, int work_done);
 
@@ -2045,6 +2046,7 @@ enum netdev_reg_state {
  *
  *	@neighbours:	List heads pointing to this device's neighbours'
  *			dev_list, one per address-family.
+ *	@hwprov: Tracks which PTP performs hardware packet time stamping.
  *
  *	FIXME: cleanup struct net_device such that network protocol info
  *	moves out.
@@ -2457,6 +2459,8 @@ struct net_device {
 
 	struct hlist_head neighbours[NEIGH_NR_TABLES];
 
+	struct hwtstamp_provider __rcu	*hwprov;
+
 	u8			priv[] ____cacheline_aligned
 				       __counted_by(priv_len);
 } ____cacheline_aligned;
@@ -2852,6 +2856,46 @@ static inline void dev_lstats_add(struct net_device *dev, unsigned int len)
 	u64_stats_add(&lstats->bytes, len);
 	u64_stats_inc(&lstats->packets);
 	u64_stats_update_end(&lstats->syncp);
+}
+
+static inline void dev_dstats_rx_add(struct net_device *dev,
+				     unsigned int len)
+{
+	struct pcpu_dstats *dstats = this_cpu_ptr(dev->dstats);
+
+	u64_stats_update_begin(&dstats->syncp);
+	u64_stats_inc(&dstats->rx_packets);
+	u64_stats_add(&dstats->rx_bytes, len);
+	u64_stats_update_end(&dstats->syncp);
+}
+
+static inline void dev_dstats_rx_dropped(struct net_device *dev)
+{
+	struct pcpu_dstats *dstats = this_cpu_ptr(dev->dstats);
+
+	u64_stats_update_begin(&dstats->syncp);
+	u64_stats_inc(&dstats->rx_drops);
+	u64_stats_update_end(&dstats->syncp);
+}
+
+static inline void dev_dstats_tx_add(struct net_device *dev,
+				     unsigned int len)
+{
+	struct pcpu_dstats *dstats = this_cpu_ptr(dev->dstats);
+
+	u64_stats_update_begin(&dstats->syncp);
+	u64_stats_inc(&dstats->tx_packets);
+	u64_stats_add(&dstats->tx_bytes, len);
+	u64_stats_update_end(&dstats->syncp);
+}
+
+static inline void dev_dstats_tx_dropped(struct net_device *dev)
+{
+	struct pcpu_dstats *dstats = this_cpu_ptr(dev->dstats);
+
+	u64_stats_update_begin(&dstats->syncp);
+	u64_stats_inc(&dstats->tx_drops);
+	u64_stats_update_end(&dstats->syncp);
 }
 
 #define __netdev_alloc_pcpu_stats(type, gfp)				\
@@ -3322,6 +3366,7 @@ struct softnet_data {
 };
 
 DECLARE_PER_CPU_ALIGNED(struct softnet_data, softnet_data);
+DECLARE_PER_CPU(struct page_pool *, system_page_pool);
 
 #ifndef CONFIG_PREEMPT_RT
 static inline int dev_recursion_level(void)
@@ -3810,7 +3855,7 @@ static inline bool netif_attr_test_mask(unsigned long j,
  *	@online_mask: bitmask for CPUs/Rx queues that are online
  *	@nr_bits: number of bits in the bitmask
  *
- * Returns true if a CPU/Rx queue is online.
+ * Returns: true if a CPU/Rx queue is online.
  */
 static inline bool netif_attr_test_online(unsigned long j,
 					  const unsigned long *online_mask,
@@ -3830,7 +3875,8 @@ static inline bool netif_attr_test_online(unsigned long j,
  *	@srcp: the cpumask/Rx queue mask pointer
  *	@nr_bits: number of bits in the bitmask
  *
- * Returns >= nr_bits if no further CPUs/Rx queues set.
+ * Returns: next (after n) CPU/Rx queue index in the mask;
+ * >= nr_bits if no further CPUs/Rx queues set.
  */
 static inline unsigned int netif_attrmask_next(int n, const unsigned long *srcp,
 					       unsigned int nr_bits)
@@ -3852,7 +3898,8 @@ static inline unsigned int netif_attrmask_next(int n, const unsigned long *srcp,
  *	@src2p: the second CPUs/Rx queues mask pointer
  *	@nr_bits: number of bits in the bitmask
  *
- * Returns >= nr_bits if no further CPUs/Rx queues set in both.
+ * Returns: next (after n) CPU/Rx queue index set in both masks;
+ * >= nr_bits if no further CPUs/Rx queues set in both.
  */
 static inline int netif_attrmask_next_and(int n, const unsigned long *src1p,
 					  const unsigned long *src2p,
@@ -3958,9 +4005,9 @@ static inline void dev_consume_skb_any(struct sk_buff *skb)
 }
 
 u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
-			     struct bpf_prog *xdp_prog);
-void generic_xdp_tx(struct sk_buff *skb, struct bpf_prog *xdp_prog);
-int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff **pskb);
+			     const struct bpf_prog *xdp_prog);
+void generic_xdp_tx(struct sk_buff *skb, const struct bpf_prog *xdp_prog);
+int do_xdp_generic(const struct bpf_prog *xdp_prog, struct sk_buff **pskb);
 int netif_rx(struct sk_buff *skb);
 int __netif_rx(struct sk_buff *skb);
 

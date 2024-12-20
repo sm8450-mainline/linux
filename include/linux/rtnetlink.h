@@ -78,7 +78,7 @@ static inline bool lockdep_rtnl_is_held(void)
  * rtnl_dereference - fetch RCU pointer when updates are prevented by RTNL
  * @p: The pointer to read, prior to dereferencing
  *
- * Return the value of the specified RCU-protected pointer, but omit
+ * Return: the value of the specified RCU-protected pointer, but omit
  * the READ_ONCE(), because caller holds RTNL.
  */
 #define rtnl_dereference(p)					\
@@ -177,6 +177,12 @@ void netdev_xmit_skip_txqueue(bool skip);
 void rtnetlink_init(void);
 void __rtnl_unlock(void);
 void rtnl_kfree_skbs(struct sk_buff *head, struct sk_buff *tail);
+
+/* Shared by rtnl_fdb_dump() and various ndo_fdb_dump() helpers. */
+struct ndo_fdb_dump_context {
+	unsigned long ifindex;
+	unsigned long fdb_idx;
+};
 
 extern int ndo_dflt_fdb_dump(struct sk_buff *skb,
 			     struct netlink_callback *cb,

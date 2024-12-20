@@ -2544,7 +2544,11 @@ static int ksz_mdio_register(struct ksz_device *dev)
 		bus->read = ksz_sw_mdio_read;
 		bus->write = ksz_sw_mdio_write;
 		bus->name = "ksz user smi";
-		snprintf(bus->id, MII_BUS_ID_SIZE, "SMI-%d", ds->index);
+		if (ds->dst->index != 0) {
+			snprintf(bus->id, MII_BUS_ID_SIZE, "SMI-%d-%d", ds->dst->index, ds->index);
+		} else {
+			snprintf(bus->id, MII_BUS_ID_SIZE, "SMI-%d", ds->index);
+		}
 	}
 
 	ret = ksz_parse_dt_phy_config(dev, bus, mdio_np);
@@ -3444,12 +3448,12 @@ static int ksz_max_mtu(struct dsa_switch *ds, int port)
 	return -EOPNOTSUPP;
 }
 
-static int ksz_validate_eee(struct dsa_switch *ds, int port)
+static bool ksz_support_eee(struct dsa_switch *ds, int port)
 {
 	struct ksz_device *dev = ds->priv;
 
 	if (!dev->info->internal_phy[port])
-		return -EOPNOTSUPP;
+		return false;
 
 	switch (dev->chip_id) {
 	case KSZ8563_CHIP_ID:
@@ -3461,21 +3465,15 @@ static int ksz_validate_eee(struct dsa_switch *ds, int port)
 	case KSZ9896_CHIP_ID:
 	case KSZ9897_CHIP_ID:
 	case LAN9646_CHIP_ID:
-		return 0;
+		return true;
 	}
 
-	return -EOPNOTSUPP;
+	return false;
 }
 
 static int ksz_get_mac_eee(struct dsa_switch *ds, int port,
 			   struct ethtool_keee *e)
 {
-	int ret;
-
-	ret = ksz_validate_eee(ds, port);
-	if (ret)
-		return ret;
-
 	/* There is no documented control of Tx LPI configuration. */
 	e->tx_lpi_enabled = true;
 
@@ -3491,11 +3489,6 @@ static int ksz_set_mac_eee(struct dsa_switch *ds, int port,
 			   struct ethtool_keee *e)
 {
 	struct ksz_device *dev = ds->priv;
-	int ret;
-
-	ret = ksz_validate_eee(ds, port);
-	if (ret)
-		return ret;
 
 	if (!e->tx_lpi_enabled) {
 		dev_err(dev->dev, "Disabling EEE Tx LPI is not supported\n");
@@ -4641,6 +4634,7 @@ static const struct dsa_switch_ops ksz_switch_ops = {
 	.cls_flower_add		= ksz_cls_flower_add,
 	.cls_flower_del		= ksz_cls_flower_del,
 	.port_setup_tc		= ksz_setup_tc,
+	.support_eee		= ksz_support_eee,
 	.get_mac_eee		= ksz_get_mac_eee,
 	.set_mac_eee		= ksz_set_mac_eee,
 	.port_get_default_prio	= ksz_port_get_default_prio,
