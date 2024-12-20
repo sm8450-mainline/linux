@@ -283,6 +283,8 @@ task_cpu_possible_mask(struct task_struct *p)
 }
 #define task_cpu_possible_mask	task_cpu_possible_mask
 
+const struct cpumask *task_cpu_fallback_mask(struct task_struct *p);
+
 void verify_cpu_asid_bits(void);
 void post_ttbr_update_workaround(void);
 

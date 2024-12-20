@@ -75,6 +75,7 @@
 #include <linux/cpu.h>
 #include <linux/kasan.h>
 #include <linux/percpu.h>
+#include <linux/sched/isolation.h>
 
 #include <asm/cpu.h>
 #include <asm/cpufeature.h>
@@ -1638,6 +1639,17 @@ const struct cpumask *system_32bit_el0_cpumask(void)
 		return cpu_32bit_el0_mask;
 
 	return cpu_possible_mask;
+}
+
+const struct cpumask *task_cpu_fallback_mask(struct task_struct *p)
+{
+	if (!static_branch_unlikely(&arm64_mismatched_32bit_el0))
+		return housekeeping_cpumask(HK_TYPE_TICK);
+
+	if (!is_compat_thread(task_thread_info(p)))
+		return housekeeping_cpumask(HK_TYPE_TICK);
+
+	return system_32bit_el0_cpumask();
 }
 
 static int __init parse_32bit_el0_param(char *str)
@@ -3741,7 +3753,10 @@ static int enable_mismatched_32bit_el0(unsigned int cpu)
 	static int lucky_winner = -1;
 
 	struct cpuinfo_arm64 *info = &per_cpu(cpu_data, cpu);
-	bool cpu_32bit = id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0);
+	bool cpu_32bit = false;
+
+	if (id_aa64pfr0_32bit_el0(info->reg_id_aa64pfr0) && housekeeping_cpu(cpu, HK_TYPE_TICK))
+		cpu_32bit = true;
 
 	if (cpu_32bit) {
 		cpumask_set_cpu(cpu, cpu_32bit_el0_mask);
