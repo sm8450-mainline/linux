@@ -1688,7 +1688,7 @@ static struct platform_driver sm8475_tlmm_driver = {
 		.of_match_table = sm8475_tlmm_of_match,
 	},
 	.probe = sm8475_tlmm_probe,
-	.remove_new = msm_pinctrl_remove,
+	.remove = msm_pinctrl_remove,
 };
 
 static int __init sm8475_tlmm_init(void)
