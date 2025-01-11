@@ -740,7 +740,7 @@
 
 &pcie0_phy {
 	vdda-phy-supply = <&vreg_l5b_0p88>;
-	vdda-pll-supply = <&vreg_l6b_1p2>;
+	vdda-pll-supply = <&vreg_l10c_1p2>;
 	status = "okay";
 };
 
@@ -804,6 +804,11 @@
 	};
 };
 
+&qup_spi4_data_clk {
+	drive-strength = <6>;
+	bias-disable;
+};
+
 &qupv3_id_0 {
 	status = "okay";
 };
@@ -817,28 +822,23 @@
 };
 
 &remoteproc_adsp {
-	firmware-name = "qcom/sm8475/nothing/pong/adsp.mdt";
+	firmware-name = "qcom/sm8475/nothing/pong/adsp.mbn";
 	status = "okay";
 };
 
 &remoteproc_cdsp {
-	firmware-name = "qcom/sm8475/nothing/pong/cdsp.mdt";
+	firmware-name = "qcom/sm8475/nothing/pong/cdsp.mbn";
 	status = "okay";
 };
 
 &remoteproc_mpss {
-	firmware-name = "qcom/sm8475/nothing/pong/modem.mdt";
+	firmware-name = "qcom/sm8475/nothing/pong/modem.mbn";
 	status = "okay";
 };
 
 &remoteproc_slpi {
-	firmware-name = "qcom/sm8475/nothing/pong/slpi.mdt";
+	firmware-name = "qcom/sm8475/nothing/pong/slpi.mbn";
 	status = "okay";
-};
-
-&qup_spi4_data_clk {
-	drive-strength = <6>;
-	bias-disable;
 };
 
 &spi4 {
