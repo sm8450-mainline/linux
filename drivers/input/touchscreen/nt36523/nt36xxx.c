@@ -1879,11 +1879,18 @@ static const struct spi_device_id nvt_ts_id[] = {
 	{ }
 };
 
+static const struct spi_device_id nt36xxx_spi_ids[] = {
+	{ "NVT-ts-spi" },
+	{ },
+};
+MODULE_DEVICE_TABLE(spi, nt36xxx_spi_ids);
+
 #ifdef CONFIG_OF
-static struct of_device_id nvt_match_table[] = {
+static const struct of_device_id nt36xxx_of_match[] = {
 	{ .compatible = "novatek,NVT-ts-spi",},
 	{ },
 };
+MODULE_DEVICE_TABLE(of, nt36xxx_of_match);
 #endif
 
 static struct spi_driver nvt_spi_driver = {
@@ -1898,7 +1905,7 @@ static struct spi_driver nvt_spi_driver = {
 		.pm = &nvt_dev_pm_ops,
 #endif
 #ifdef CONFIG_OF
-		.of_match_table = nvt_match_table,
+		.of_match_table = nt36xxx_of_match
 #endif
 	},
 };
