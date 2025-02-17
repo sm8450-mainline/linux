@@ -57,6 +57,7 @@
 };
 
 &gpu {
+/*
 	gpu_opp_table: opp-table {
 		compatible = "operating-points-v2";
 		opp-900000000 {
@@ -111,7 +112,7 @@
 			opp-hz = /bits/ 64 <220000000>;
 			opp-level = <RPMH_REGULATOR_LEVEL_MIN_SVS>;
 		};
-	};
+	};*/
 };
 
 &gpucc {
@@ -123,6 +124,7 @@
 };
 
 &ufs_mem_hc {
+	/*
 	freq-table-hz =
 		<75000000 850000000>,
 		<0 0>,
@@ -132,6 +134,7 @@
 		<0 0>,
 		<0 0>,
 		<0 0>;
+	*/
 };
 
 &videocc {
