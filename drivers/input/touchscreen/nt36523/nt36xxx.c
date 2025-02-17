@@ -945,8 +945,6 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 			if (input_p == 0)
 				input_p = 1;
 
-			input_x /= 10;
-			input_y /= 10;
 #if MT_PROTOCOL_B
 			press_id[input_id - 1] = 1;
 			input_mt_slot(ts->input_dev, input_id - 1);
@@ -957,7 +955,7 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 #endif /* MT_PROTOCOL_B */
 
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_y);
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, TOUCH_DEFAULT_MAX_HEIGHT - input_x);
+			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, TOUCH_DEFAULT_MAX_HEIGHT * 10 - input_x);
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
 			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
 
@@ -1346,8 +1344,8 @@ NVT_LOG("Hi2\n");
 #if TOUCH_MAX_FINGER_NUM > 1
 	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);    //area = 255
 
-	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->abs_x_max - 1, 0, 0);
-	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, ts->abs_y_max - 1, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->abs_x_max * 10 - 1, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, ts->abs_y_max * 10 - 1, 0, 0);
 #if MT_PROTOCOL_B
 	// no need to set ABS_MT_TRACKING_ID, input_mt_init_slots() already set it
 #else
