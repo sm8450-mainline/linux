@@ -30,6 +30,8 @@
 	chassis-type = "tablet";
 
 	aliases {
+		hsuart0 = &uart20;
+		serial0 = &uart7;
 	};
 
 	chosen {
@@ -37,8 +39,7 @@
 		#size-cells = <2>;
 		ranges;
 
-		bootargs = "PMOS_NOSPLASH earlycon clk_ignore_unused pd_ignore_unused console=tty0";
-
+		bootargs = "PMOS_NOSPLASH dyndbg=\"module phy_qcom_qmp_pcie +pmf\" earlycon clk_ignore_unused pd_ignore_unused console=tty0";
 	};
 
 
@@ -154,6 +155,69 @@
 
 		regulator-always-on;
 	};
+
+	wcn6855-pmu {
+		compatible = "qcom,wcn6855-pmu";
+
+		pinctrl-0 = <&wlan_en_state>;
+		pinctrl-names = "default";
+
+		wlan-enable-gpios = <&tlmm 80 GPIO_ACTIVE_HIGH>;
+		bt-enable-gpios = <&tlmm 81 GPIO_ACTIVE_HIGH>;
+		swctrl-gpios = <&tlmm 82 GPIO_ACTIVE_HIGH>;
+
+		vddio-supply = <&pm8350_s10>;
+		vddaon-supply = <&pmr735a_s2>;
+		vddpmu-supply = <&pm8350_s11>;
+		vddrfa0p95-supply = <&pm8350_s11>;
+		vddrfa1p3-supply = <&pm8350_s12>;
+		vddrfa1p9-supply = <&pm8350c_s1>;
+		vddpcie1p3-supply = <&pm8350_s12>;
+		vddpcie1p9-supply = <&pm8350c_s1>;
+
+		regulators {
+			vreg_pmu_rfa_cmn_0p8: ldo0 {
+				regulator-name = "vreg_pmu_rfa_cmn_0p8";
+			};
+
+			vreg_pmu_aon_0p8: ldo1 {
+				regulator-name = "vreg_pmu_aon_0p8";
+			};
+
+			vreg_pmu_wlcx_0p8: ldo2 {
+				regulator-name = "vreg_pmu_wlcx_0p8";
+			};
+
+			vreg_pmu_wlmx_0p8: ldo3 {
+				regulator-name = "vreg_pmu_wlmx_0p8";
+			};
+
+			vreg_pmu_btcmx_0p8: ldo4 {
+				regulator-name = "vreg_pmu_btcmx_0p8";
+			};
+
+			vreg_pmu_pcie_1p8: ldo5 {
+				regulator-name = "vreg_pmu_pcie_1p8";
+			};
+
+			vreg_pmu_pcie_0p9: ldo6 {
+				regulator-name = "vreg_pmu_pcie_0p9";
+			};
+
+			vreg_pmu_rfa_0p8: ldo7 {
+				regulator-name = "vreg_pmu_rfa_0p8";
+			};
+
+			vreg_pmu_rfa_1p2: ldo8 {
+				regulator-name = "vreg_pmu_rfa_1p2";
+			};
+
+			vreg_pmu_rfa_1p7: ldo9 {
+				regulator-name = "vreg_pmu_rfa_1p7";
+			};
+		};
+	};
+
 };
 
 &apps_rsc {
@@ -228,8 +292,10 @@
 
 		pm8350_l5: ldo5 {
 			regulator-name = "pm8350_l5";
-			regulator-min-microvolt = <720000>;
-			regulator-max-microvolt = <958000>;
+			//regulator-min-microvolt = <720000>;
+			//regulator-max-microvolt = <958000>;
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <880000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
@@ -291,6 +357,7 @@
 			regulator-name = "pm8350c_s1";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <2024000>;
+			regulator-always-on;
 		};
 
 		pm8350c_s10: smps10 {
@@ -444,6 +511,13 @@
 			regulator-max-microvolt = <958000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
+
+		pm8450_l4: ldo4 {
+			regulator-name = "pm8450_l4";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
 	};
 
 	regulators-3 {
@@ -466,6 +540,7 @@
 			regulator-name = "pmr735a_s2";
 			regulator-min-microvolt = <500000>;
 			regulator-max-microvolt = <1040000>;
+			regulator-always-on;
 		};
 
 		pmr735a_s3: smps3 {
@@ -514,6 +589,8 @@
 			regulator-name = "pmr735a_l7";
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
+
+			regulator-always-on;
 		};
 	};
 };
@@ -692,6 +769,34 @@
 	status = "okay";
 };
 
+&pcie0 {
+	status = "okay";
+};
+
+&pcieport0 {
+	wifi@0 {
+		compatible = "pci17cb,1103";
+		reg = <0x10000 0x0 0x0 0x0 0x0>;
+
+		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
+		vddaon-supply = <&vreg_pmu_aon_0p8>;
+		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
+		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
+		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
+		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
+		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
+		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
+		vddrfa1p8-supply = <&vreg_pmu_rfa_1p7>;
+
+	};
+};
+
+&pcie0_phy {
+	vdda-phy-supply = <&pm8350_l5>;
+	vdda-pll-supply = <&pm8350c_l10>;
+	status = "okay";
+};
+
 &pm8350_gpios {
 	vol_up_n: vol-up-n-state {
 		pins = "gpio6";
@@ -782,8 +887,38 @@
 		drive-strength = <8>;
 		bias-disable;
 	};
+
+	wlan_en_state: wlan-en-state {
+		pins = "gpio80";
+		function = "gpio";
+		drive-strength = <16>;
+		bias-pull-up;
+		output-high;
+	};
 };
 
+&uart7 {
+	status = "okay";
+};
+
+&uart20 {
+	status = "okay";
+
+	bluetooth {
+		compatible = "qcom,wcn6855-bt";
+
+		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
+		vddaon-supply = <&vreg_pmu_aon_0p8>;
+		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
+		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
+		vddbtcmx-supply = <&vreg_pmu_btcmx_0p8>;
+		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
+		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
+		vddrfa1p8-supply = <&vreg_pmu_rfa_1p7>;
+
+		max-speed = <3200000>;
+	};
+};
 
 &ufs_mem_hc {
 	status = "okay";
