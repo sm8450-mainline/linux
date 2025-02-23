@@ -47,8 +47,8 @@ static inline void qmp_configure_lane(struct device *dev, void __iomem *base,
 		if (!(t->lane_mask & lane_mask))
 			continue;
 
-		dev_dbg(dev, "Writing Reg: %s Offset: 0x%04x Val: 0x%02x\n",
-			t->name, t->offset, t->val);
+		dev_dbg(dev, "Writing Reg: %s Offset: 0x%04x [0x%04x] Val: 0x%02x\n",
+			t->name, t->offset, (uint16_t)(base + t->offset), t->val);
 		writel(t->val, base + t->offset);
 	}
 }
