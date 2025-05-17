@@ -1000,6 +1000,7 @@
 &usb_1_dwc3 {
 	dr_mode = "otg";
 	maximum-speed = "high-speed";
+	usb-role-switch;
 	/* Remove USB3 phy */
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
