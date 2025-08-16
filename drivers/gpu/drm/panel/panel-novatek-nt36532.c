@@ -715,7 +715,7 @@ static int nt36532_probe(struct mipi_dsi_device *dsi)
 			continue;
 		/* This panel only supports DSC; unconditionally enable it */
 		ctx->dsi[i]->dsc = &ctx->dsc;
-		ctx->dsi[i]->dsc_slice_per_pkt = 2;
+		//ctx->dsi[i]->dsc_slice_per_pkt = 2;
 
 		ctx->dsi[i]->lanes = 4;
 		ctx->dsi[i]->format = MIPI_DSI_FMT_RGB888;
